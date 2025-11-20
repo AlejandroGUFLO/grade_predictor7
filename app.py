@@ -78,14 +78,20 @@ Y_class = df["HighPerformance"]
 scaler_class = StandardScaler()
 X_scaled_class = scaler_class.fit_transform(X)
 
+# ✅ CAMBIO: Usar probabilidades calibradas y menos regularización
 model_classification = LogisticRegression(
-    C=0.1,  # ← REDUCIDO (más regularización = menos sobreajuste)
-    max_iter=1000,
+    C=1.0,  # ← AUMENTADO a 1.0 para menos regularización
+    max_iter=2000,  # ← Más iteraciones para convergencia
     solver="lbfgs",
     random_state=42,
     class_weight='balanced',
-    penalty='l2'  # ← AGREGADO (regularización L2)
+    penalty='l2'
 )
+model_classification.fit(X_scaled_class, Y_class)
+
+# ✅ MEJORA: Aplicar calibración de probabilidades
+from sklearn.calibration import CalibratedClassifierCV
+model_classification = CalibratedClassifierCV(model_classification, method='sigmoid', cv=5)
 model_classification.fit(X_scaled_class, Y_class)
 
 # ===============================
@@ -104,7 +110,7 @@ st.markdown("*Predice tu calificación esperada y probabilidad de alto rendimien
 # ===============================
 # 7. SECCIÓN: INFORMACIÓN PERSONAL
 # ===============================
-st.markdown("---")
+sst.markdown("---")
 st.subheader("👤 Información Personal")
 
 col_info1, col_info2 = st.columns(2)
@@ -146,6 +152,10 @@ tendencia = grade_past * (hours_now / (hours_past + 1))
 # 10. REALIZAR PREDICCIÓN
 # ===============================
 if st.button("🔮 Predecir Rendimiento", type="primary"):
+    # Mostrar información personal capturada (solo para referencia)
+    st.markdown("---")
+    st.caption(f"👤 **Información capturada:** {gender} | {semester}° Semestre")
+    st.markdown("---")
     # Crear DataFrame con nuevos datos
     new_data = pd.DataFrame({
         "Materias pasadas": [courses_past],
