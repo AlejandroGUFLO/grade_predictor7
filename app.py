@@ -16,15 +16,33 @@ def load_and_prepare_data():
     """Load historical student data without personal information"""
     df = pd.read_excel("proyectom.xlsx")
     
-    # Clean column names
+    # Clean column names - remove extra spaces
     df.columns = df.columns.str.strip()
     
+    # Map old column names to clean names
+    column_mapping = {}
+    for col in df.columns:
+        clean_col = col.strip()
+        if 'materias' in col.lower() and 'pasadas' in col.lower():
+            column_mapping[col] = 'Materias pasadas'
+        elif 'materias' in col.lower() and 'nuevas' in col.lower():
+            column_mapping[col] = 'Materias nuevas'
+        elif 'horas' in col.lower() and 'actuales' in col.lower():
+            column_mapping[col] = 'Horas de estudio actuales'
+        elif 'horas' in col.lower() and 'pasadas' in col.lower():
+            column_mapping[col] = 'Horas estudio pasadas'
+        elif 'calificaciones' in col.lower():
+            column_mapping[col] = 'Calificaciones pasadas'
+    
+    # Rename columns
+    df.rename(columns=column_mapping, inplace=True)
+    
     # Feature engineering
-    df["eficiencia_estudio_pasado"] = df["Calificaciones pasadas"] / (df["Horas estudio pasadas "] + 1)
-    df["intensidad_estudio_actual"] = df["Horas de estudio actuales "] / (df["Materias nuevas"] + 1)
-    df["cambio_horas"] = df["Horas de estudio actuales "] - df["Horas estudio pasadas "]
-    df["ratio_materias"] = df["Materias nuevas"] / (df["Materias pasadas "] + 1)
-    df["tendencia_academica"] = df["Calificaciones pasadas"] * (df["Horas de estudio actuales "] / (df["Horas estudio pasadas "] + 1))
+    df["eficiencia_estudio_pasado"] = df["Calificaciones pasadas"] / (df["Horas estudio pasadas"] + 1)
+    df["intensidad_estudio_actual"] = df["Horas de estudio actuales"] / (df["Materias nuevas"] + 1)
+    df["cambio_horas"] = df["Horas de estudio actuales"] - df["Horas estudio pasadas"]
+    df["ratio_materias"] = df["Materias nuevas"] / (df["Materias pasadas"] + 1)
+    df["tendencia_academica"] = df["Calificaciones pasadas"] * (df["Horas de estudio actuales"] / (df["Horas estudio pasadas"] + 1))
     
     # Target variable: High Performance (≥9.2)
     df["HighPerformance"] = (df["Calificaciones pasadas"] >= 9.2).astype(int)
