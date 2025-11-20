@@ -22,17 +22,15 @@ def load_and_prepare_data():
                      "Materias pasadas", "Materias nuevas"]
     df = df.dropna(subset=critical_cols)
     
-    # Variable objetivo: Alto rendimiento (≥9.2)
-    df["HighPerformance"] = (df["Calificaciones pasadas"] >= 9.2).astype(int)
+    # ✅ CAMBIO CRÍTICO: Usar la calificación de REGRESIÓN como objetivo
+    # Ya no usamos las calificaciones pasadas, sino las predichas
     
-    # Ingeniería de características MEJORADA
+    # Ingeniería de características
     df["eficiencia_estudio_pasado"] = df["Calificaciones pasadas"] / (df["Horas estudio pasadas"] + 0.1)
     df["intensidad_estudio_actual"] = df["Horas de estudio actuales"] / (df["Materias nuevas"] + 0.1)
     df["cambio_horas"] = df["Horas de estudio actuales"] - df["Horas estudio pasadas"]
     df["ratio_materias"] = df["Materias nuevas"] / (df["Materias pasadas"] + 0.1)
     df["tendencia_academica"] = df["Calificaciones pasadas"] * (df["Horas de estudio actuales"] / (df["Horas estudio pasadas"] + 0.1))
-    
-    # ✅ NUEVAS FEATURES para mejor predicción
     df["calificacion_cuadrada"] = df["Calificaciones pasadas"] ** 2
     df["horas_totales"] = df["Horas de estudio actuales"] + df["Horas estudio pasadas"]
     df["momentum_estudio"] = df["Calificaciones pasadas"] * df["Horas de estudio actuales"]
@@ -55,7 +53,10 @@ feature_cols = [
     "intensidad_estudio_actual",
     "cambio_horas",
     "ratio_materias",
-    "tendencia_academica"
+    "tendencia_academica",
+    "calificacion_cuadrada",
+    "horas_totales",
+    "momentum_estudio"
 ]
 
 X = df[feature_cols].copy()
@@ -79,27 +80,44 @@ model_regression.fit(X_scaled_reg, Y_grade)
 # ===============================
 # 4. ENTRENAR MODELO DE REGRESIÓN LOGÍSTICA
 # ===============================
-Y_class = df["HighPerformance"]
+# ✅ NUEVA ESTRATEGIA: Primero entrenar regresión, luego usar sus predicciones
+# para entrenar el clasificador
+
+# Entrenar regresión primero para obtener predicciones
+from sklearn.model_selection import cross_val_predict
+
+# Obtener predicciones del modelo de regresión usando validación cruzada
+predicted_grades = cross_val_predict(model_regression, X_scaled_reg, Y_grade, cv=5)
+
+# ✅ Crear variable objetivo basada en PREDICCIONES, no en datos reales
+Y_class = (predicted_grades >= 9.2).astype(int)
+
+# Si hay muy pocos casos positivos, ajustar el umbral
+positive_rate = Y_class.sum() / len(Y_class)
+if positive_rate < 0.15:  # Si menos del 15% son positivos
+    # Usar un umbral más bajo
+    Y_class = (predicted_grades >= 9.0).astype(int)
+
 scaler_class = StandardScaler()
 X_scaled_class = scaler_class.fit_transform(X)
 
-# ✅ Entrenar modelo base con mejor configuración
+# ✅ Entrenar modelo base con configuración balanceada
 base_model = LogisticRegression(
-    C=10.0,  # ✅ Menos regularización (era 0.5)
+    C=1.0,  
     max_iter=3000,
-    solver="saga",  # ✅ Mejor solver para datasets pequeños
+    solver="liblinear",
     random_state=42,
-    class_weight={0: 1.0, 1: 1.5},  # ✅ Dar más peso a clase positiva
-    penalty='l1'  # ✅ L1 para selección de features
+    class_weight='balanced',
+    penalty='l2'
 )
 base_model.fit(X_scaled_class, Y_class)
 
 # ✅ Guardar los coeficientes ANTES de calibrar
 base_coef = base_model.coef_[0].copy()
 
-# ✅ Aplicar calibración de probabilidades (sin CV para evitar overfitting)
+# ✅ Aplicar calibración de probabilidades
 from sklearn.calibration import CalibratedClassifierCV
-model_classification = CalibratedClassifierCV(base_model, method='isotonic', cv=3)
+model_classification = CalibratedClassifierCV(base_model, method='sigmoid', cv=3)
 model_classification.fit(X_scaled_class, Y_class)
 
 # ===============================
@@ -150,11 +168,14 @@ with col2:
 # ===============================
 # 9. CALCULAR FEATURES DERIVADAS
 # ===============================
-eficiencia = grade_past / (hours_past + 1)
-intensidad = hours_now / (courses_now + 1)
+eficiencia = grade_past / (hours_past + 0.1)
+intensidad = hours_now / (courses_now + 0.1)
 cambio_h = hours_now - hours_past
-ratio_mat = courses_now / (courses_past + 1)
-tendencia = grade_past * (hours_now / (hours_past + 1))
+ratio_mat = courses_now / (courses_past + 0.1)
+tendencia = grade_past * (hours_now / (hours_past + 0.1))
+calificacion_cuadrada = grade_past ** 2
+horas_totales = hours_now + hours_past
+momentum_estudio = grade_past * hours_now
 
 # ===============================
 # 10. REALIZAR PREDICCIÓN
@@ -176,7 +197,10 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         "intensidad_estudio_actual": [intensidad],
         "cambio_horas": [cambio_h],
         "ratio_materias": [ratio_mat],
-        "tendencia_academica": [tendencia]
+        "tendencia_academica": [tendencia],
+        "calificacion_cuadrada": [calificacion_cuadrada],
+        "horas_totales": [horas_totales],
+        "momentum_estudio": [momentum_estudio]
     })
     
     # Predicción de calificación (Regresión)
@@ -403,10 +427,13 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     probs_scenarios = []
     
     for h in range(1, 21):
-        sim_eficiencia = grade_past / (hours_past + 1)
-        sim_intensidad = h / (courses_now + 1)
+        sim_eficiencia = grade_past / (hours_past + 0.1)
+        sim_intensidad = h / (courses_now + 0.1)
         sim_cambio = h - hours_past
-        sim_tendencia = grade_past * (h / (hours_past + 1))
+        sim_tendencia = grade_past * (h / (hours_past + 0.1))
+        sim_calificacion_cuadrada = grade_past ** 2
+        sim_horas_totales = h + hours_past
+        sim_momentum_estudio = grade_past * h
         
         sim_data = pd.DataFrame({
             "Materias pasadas": [courses_past],
@@ -418,7 +445,10 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
             "intensidad_estudio_actual": [sim_intensidad],
             "cambio_horas": [sim_cambio],
             "ratio_materias": [ratio_mat],
-            "tendencia_academica": [sim_tendencia]
+            "tendencia_academica": [sim_tendencia],
+            "calificacion_cuadrada": [sim_calificacion_cuadrada],
+            "horas_totales": [sim_horas_totales],
+            "momentum_estudio": [sim_momentum_estudio]
         })
         
         sim_scaled_reg = scaler_reg.transform(sim_data)
@@ -495,7 +525,10 @@ feature_names_readable = {
     "intensidad_estudio_actual": "Intensidad (horas/materia)",
     "cambio_horas": "Cambio en horas",
     "ratio_materias": "Cambio en materias",
-    "tendencia_academica": "Tendencia académica"
+    "tendencia_academica": "Tendencia académica",
+    "calificacion_cuadrada": "Calificación al cuadrado",
+    "horas_totales": "Total de horas",
+    "momentum_estudio": "Momentum académico"
 }
 
 # ✅ SOLUCIÓN: Usar los coeficientes guardados del modelo base
