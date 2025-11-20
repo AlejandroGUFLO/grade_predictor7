@@ -25,12 +25,17 @@ def load_and_prepare_data():
     # Variable objetivo: Alto rendimiento (≥9.2)
     df["HighPerformance"] = (df["Calificaciones pasadas"] >= 9.2).astype(int)
     
-    # Ingeniería de características
-    df["eficiencia_estudio_pasado"] = df["Calificaciones pasadas"] / (df["Horas estudio pasadas"] + 1)
-    df["intensidad_estudio_actual"] = df["Horas de estudio actuales"] / (df["Materias nuevas"] + 1)
+    # Ingeniería de características MEJORADA
+    df["eficiencia_estudio_pasado"] = df["Calificaciones pasadas"] / (df["Horas estudio pasadas"] + 0.1)
+    df["intensidad_estudio_actual"] = df["Horas de estudio actuales"] / (df["Materias nuevas"] + 0.1)
     df["cambio_horas"] = df["Horas de estudio actuales"] - df["Horas estudio pasadas"]
-    df["ratio_materias"] = df["Materias nuevas"] / (df["Materias pasadas"] + 1)
-    df["tendencia_academica"] = df["Calificaciones pasadas"] * (df["Horas de estudio actuales"] / (df["Horas estudio pasadas"] + 1))
+    df["ratio_materias"] = df["Materias nuevas"] / (df["Materias pasadas"] + 0.1)
+    df["tendencia_academica"] = df["Calificaciones pasadas"] * (df["Horas de estudio actuales"] / (df["Horas estudio pasadas"] + 0.1))
+    
+    # ✅ NUEVAS FEATURES para mejor predicción
+    df["calificacion_cuadrada"] = df["Calificaciones pasadas"] ** 2
+    df["horas_totales"] = df["Horas de estudio actuales"] + df["Horas estudio pasadas"]
+    df["momentum_estudio"] = df["Calificaciones pasadas"] * df["Horas de estudio actuales"]
     
     return df
 
@@ -78,23 +83,23 @@ Y_class = df["HighPerformance"]
 scaler_class = StandardScaler()
 X_scaled_class = scaler_class.fit_transform(X)
 
-# ✅ Entrenar modelo base primero
+# ✅ Entrenar modelo base con mejor configuración
 base_model = LogisticRegression(
-    C=0.5,  
-    max_iter=2000,
-    solver="lbfgs",
+    C=10.0,  # ✅ Menos regularización (era 0.5)
+    max_iter=3000,
+    solver="saga",  # ✅ Mejor solver para datasets pequeños
     random_state=42,
-    class_weight='balanced',
-    penalty='l2'
+    class_weight={0: 1.0, 1: 1.5},  # ✅ Dar más peso a clase positiva
+    penalty='l1'  # ✅ L1 para selección de features
 )
 base_model.fit(X_scaled_class, Y_class)
 
 # ✅ Guardar los coeficientes ANTES de calibrar
 base_coef = base_model.coef_[0].copy()
 
-# ✅ Aplicar calibración de probabilidades
+# ✅ Aplicar calibración de probabilidades (sin CV para evitar overfitting)
 from sklearn.calibration import CalibratedClassifierCV
-model_classification = CalibratedClassifierCV(base_model, method='sigmoid', cv=5)
+model_classification = CalibratedClassifierCV(base_model, method='isotonic', cv=3)
 model_classification.fit(X_scaled_class, Y_class)
 
 # ===============================
