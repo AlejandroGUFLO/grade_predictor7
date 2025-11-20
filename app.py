@@ -177,10 +177,12 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         prob_color = "🟢" if probability >= 0.7 else "🟡" if probability >= 0.4 else "🔴"
         st.markdown(f"# {prob_color} {probability*100:.1f}%")
         result_text = "✅ SÍ" if prediction_class == 1 else "⚠️ NO"
+        # Mostrar el porcentaje de rendimiento bajo también
+        prob_bajo = 1 - probability
         st.metric(
             "Predicción",
             result_text,
-            delta="Alto rendimiento" if prediction_class == 1 else "Rendimiento medio"
+            delta=f"Alto: {probability*100:.1f}% | Bajo: {prob_bajo*100:.1f}%"
         )
     
     # Métricas adicionales
@@ -208,37 +210,94 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
             help="Diferencia vs semestre anterior"
         )
     
-    # Gráfico tipo velocímetro para calificación
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
-        value=predicted_grade,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Calificación Esperada", 'font': {'size': 20}},
-        delta={'reference': grade_past, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
-        number={'font': {'size': 40}},
-        gauge={
-            'axis': {'range': [6, 10], 'tickwidth': 2, 'tickcolor': "darkblue"},
-            'bar': {'color': "darkblue", 'thickness': 0.75},
-            'steps': [
-                {'range': [6, 7], 'color': "#ffcccc"},
-                {'range': [7, 8], 'color': "#fff4cc"},
-                {'range': [8, 9], 'color': "#cce5ff"},
-                {'range': [9, 10], 'color': "#ccffcc"}
-            ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.85,
-                'value': 9.2
+    # Gráficos combinados: velocímetro de calificación + probabilidades
+    col_gauge1, col_gauge2 = st.columns(2)
+    
+    with col_gauge1:
+        # Gráfico tipo velocímetro para calificación
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number+delta",
+            value=predicted_grade,
+            domain={'x': [0, 1], 'y': [0, 1]},
+            title={'text': "Calificación Esperada", 'font': {'size': 20}},
+            delta={'reference': grade_past, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+            number={'font': {'size': 40}},
+            gauge={
+                'axis': {'range': [6, 10], 'tickwidth': 2, 'tickcolor': "darkblue"},
+                'bar': {'color': "darkblue", 'thickness': 0.75},
+                'steps': [
+                    {'range': [6, 7], 'color': "#ffcccc"},
+                    {'range': [7, 8], 'color': "#fff4cc"},
+                    {'range': [8, 9], 'color': "#cce5ff"},
+                    {'range': [9, 10], 'color': "#ccffcc"}
+                ],
+                'threshold': {
+                    'line': {'color': "red", 'width': 4},
+                    'thickness': 0.85,
+                    'value': 9.2
+                }
             }
-        }
-    ))
-    fig.update_layout(height=300)
-    st.plotly_chart(fig, use_container_width=True)
+        ))
+        fig.update_layout(height=350)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col_gauge2:
+        # Gráfico de barras para probabilidades (Regresión Logística)
+        prob_bajo = 1 - probability
+        categories = ["Alto Rendimiento\n(≥9.2)", "Bajo Rendimiento\n(<9.2)"]
+        probs = [probability * 100, prob_bajo * 100]
+        colors_probs = ["#2ecc71", "#e74c3c"]
+        
+        fig_prob = go.Figure(data=[
+            go.Bar(
+                x=categories,
+                y=probs,
+                marker=dict(color=colors_probs),
+                text=[f"{p:.1f}%" for p in probs],
+                textposition='auto',
+                textfont=dict(size=14, color='white'),
+                hovertemplate="<b>%{x}</b><br>Probabilidad: %{y:.1f}%<extra></extra>"
+            )
+        ])
+        
+        fig_prob.update_layout(
+            title="Predicción por Regresión Logística",
+            yaxis_title="Probabilidad (%)",
+            yaxis=dict(range=[0, 100]),
+            height=350,
+            showlegend=False,
+            hovermode='x'
+        )
+        
+        st.plotly_chart(fig_prob, use_container_width=True)
     
     # Análisis de cambio
     grade_change = predicted_grade - grade_past
     
-    st.markdown("### 📊 Análisis")
+    st.markdown("### 📊 Análisis Detallado")
+    
+    # Tabla de probabilidades detallada
+    prob_bajo = 1 - probability
+    analysis_data = {
+        "Escenario": ["Alto Rendimiento (≥9.2)", "Bajo Rendimiento (<9.2)"],
+        "Probabilidad": [f"{probability*100:.1f}%", f"{prob_bajo*100:.1f}%"],
+        "Confianza": [
+            "🟢 Alta" if probability >= 0.7 else "🟡 Media" if probability >= 0.5 else "🔴 Baja",
+            "🟢 Alta" if prob_bajo >= 0.7 else "🟡 Media" if prob_bajo >= 0.5 else "🔴 Baja"
+        ]
+    }
+    
+    df_analysis = pd.DataFrame(analysis_data)
+    st.table(df_analysis)
+    
+    # Interpretación
+    st.markdown("**Interpretación:**")
+    if probability >= 0.7:
+        st.success(f"✅ Tienes una **alta probabilidad ({probability*100:.1f}%)** de alcanzar alto rendimiento (≥9.2)")
+    elif probability >= 0.5:
+        st.info(f"🟡 Tienes una **probabilidad moderada ({probability*100:.1f}%)** de alcanzar alto rendimiento (≥9.2)")
+    else:
+        st.warning(f"🔴 Tienes una **baja probabilidad ({probability*100:.1f}%)** de alcanzar alto rendimiento (≥9.2)")
     
     if grade_change > 0.3:
         st.success(f"📈 **¡Excelente!** Se espera una mejora de **{grade_change:.2f} puntos**")
@@ -246,11 +305,6 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         st.error(f"📉 **Atención:** Se espera una baja de **{abs(grade_change):.2f} puntos**")
     else:
         st.info(f"📊 **Estable:** Calificación similar al semestre anterior ({grade_change:+.2f})")
-    
-    if prediction_class == 1:
-        st.success(f"✅ **Predicción: ALTO RENDIMIENTO** (probabilidad: {probability*100:.1f}%)")
-    else:
-        st.warning(f"⚠️ **Predicción: rendimiento por debajo de 9.2** (probabilidad de alto: {probability*100:.1f}%)")
     
     # Recomendaciones
     st.markdown("---")
