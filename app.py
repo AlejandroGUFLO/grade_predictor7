@@ -1,4 +1,16 @@
-import streamlit as st
+# Tabla de probabilidades detallada (solo Alto Rendimiento)
+    prob_bajo = 1 - probability
+    analysis_data = {
+        "Categoría": ["✅ Alto Rendimiento (≥9.2)", "⚠️ No Alcanza Alto Rendimiento (<9.2)"],
+        "Probabilidad": [f"{probability*100:.1f}%", f"{prob_bajo*100:.1f}%"],
+        "Interpretación": [
+            "Posibilidad de alcanzar la meta" if probability >= 0.5 else "Difícil pero posible",
+            "Probabilidad complementaria" if prob_bajo >= 0.5 else "Muy probable éxito"
+        ]
+    }
+    
+    df_analysis = pd.DataFrame(analysis_data)
+    st.dataframe(df_analysis, use_container_width=True, hide_index=True)import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
@@ -177,12 +189,10 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         prob_color = "🟢" if probability >= 0.7 else "🟡" if probability >= 0.4 else "🔴"
         st.markdown(f"# {prob_color} {probability*100:.1f}%")
         result_text = "✅ SÍ" if prediction_class == 1 else "⚠️ NO"
-        # Mostrar el porcentaje de rendimiento bajo también
-        prob_bajo = 1 - probability
         st.metric(
             "Predicción",
             result_text,
-            delta=f"Alto: {probability*100:.1f}% | Bajo: {prob_bajo*100:.1f}%"
+            delta=f"{probability*100:.1f}%"
         )
     
     # Métricas adicionales
@@ -244,7 +254,7 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     with col_gauge2:
         # Gráfico de barras para probabilidades (Regresión Logística)
         prob_bajo = 1 - probability
-        categories = ["Alto Rendimiento\n(≥9.2)", "Bajo Rendimiento\n(<9.2)"]
+        categories = ["✅ Alto\nRendimiento\n(≥9.2)", "⚠️ No Alcanza\nAlto\nRendimiento"]
         probs = [probability * 100, prob_bajo * 100]
         colors_probs = ["#2ecc71", "#e74c3c"]
         
@@ -255,7 +265,7 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
                 marker=dict(color=colors_probs),
                 text=[f"{p:.1f}%" for p in probs],
                 textposition='auto',
-                textfont=dict(size=14, color='white'),
+                textfont=dict(size=16, color='white', weight='bold'),
                 hovertemplate="<b>%{x}</b><br>Probabilidad: %{y:.1f}%<extra></extra>"
             )
         ])
@@ -263,10 +273,11 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         fig_prob.update_layout(
             title="Predicción por Regresión Logística",
             yaxis_title="Probabilidad (%)",
-            yaxis=dict(range=[0, 100]),
+            yaxis=dict(range=[0, 105]),
             height=350,
             showlegend=False,
-            hovermode='x'
+            hovermode='x',
+            xaxis=dict(tickfont=dict(size=10))
         )
         
         st.plotly_chart(fig_prob, use_container_width=True)
@@ -452,9 +463,14 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     # Usar coeficientes del modelo de Regresión Logística (valor absoluto)
     coef_importance = np.abs(model_classification.coef_[0])
     
+    # Normalizar por la desviación estándar de cada feature (ya que los datos están escalados)
+    # Esto da un peso más justo a cada característica
+    feature_std = X_scaled_class.std(axis=0)
+    coef_normalized = coef_importance / (feature_std + 1e-8)
+    
     feature_importance = pd.DataFrame({
         'Factor': [feature_names_readable[col] for col in feature_cols],
-        'Importancia': coef_importance
+        'Importancia': coef_normalized
     }).sort_values('Importancia', ascending=False)
     
     # Normalizar importancias a porcentaje
