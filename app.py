@@ -234,32 +234,32 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     col_gauge1, col_gauge2 = st.columns(2)
     
     with col_gauge1:
-    # Gráfico tipo velocímetro para calificación
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
-        value=predicted_grade,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Calificación Esperada", 'font': {'size': 20}},
-        delta={'reference': grade_past, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
-        number={'font': {'size': 50, 'color': 'darkblue'}},  # ✅ AUMENTADO y con color
-        gauge={
-            'axis': {'range': [6, 10], 'tickwidth': 2, 'tickcolor': "darkblue"},
-            'bar': {'color': "darkblue", 'thickness': 0.75},
-            'steps': [
-                {'range': [6, 7], 'color': "#ffcccc"},
-                {'range': [7, 8], 'color': "#fff4cc"},
-                {'range': [8, 9], 'color': "#cce5ff"},
-                {'range': [9, 10], 'color': "#ccffcc"}
-            ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.85,
-                'value': 9.2
+        # Gáfico tipo velocímetro para calificación
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number+delta",
+            value=predicted_grade,
+            domain={'x': [0, 1], 'y': [0, 1]},
+            title={'text': "Calificación Esperada", 'font': {'size': 20}},
+            delta={'reference': grade_past, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+            number={'font': {'size': 50, 'color': 'darkblue'}},
+            gauge={
+                'axis': {'range': [6, 10], 'tickwidth': 2, 'tickcolor': "darkblue"},
+                'bar': {'color': "darkblue", 'thickness': 0.75},
+                'steps': [
+                    {'range': [6, 7], 'color': "#ffcccc"},
+                    {'range': [7, 8], 'color': "#fff4cc"},
+                    {'range': [8, 9], 'color': "#cce5ff"},
+                    {'range': [9, 10], 'color': "#ccffcc"}
+                ],
+                'threshold': {
+                    'line': {'color': "red", 'width': 4},
+                    'thickness': 0.85,
+                    'value': 9.2
+                }
             }
-        }
-    ))
-    fig.update_layout(height=350, margin=dict(l=10, r=10, t=50, b=10))
-    st.plotly_chart(fig, use_container_width=True)
+        ))
+        fig.update_layout(height=350, margin=dict(l=10, r=10, t=50, b=10))
+        st.plotly_chart(fig, use_container_width=True)
     
     with col_gauge2:
         # Gráfico de barras para probabilidades (Regresión Logística)
