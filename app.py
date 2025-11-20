@@ -78,20 +78,23 @@ Y_class = df["HighPerformance"]
 scaler_class = StandardScaler()
 X_scaled_class = scaler_class.fit_transform(X)
 
-# ✅ CAMBIO: Usar probabilidades calibradas y menos regularización
-model_classification = LogisticRegression(
+# ✅ Entrenar modelo base primero
+base_model = LogisticRegression(
     C=0.5,  
-    max_iter=2000,  # ← Más iteraciones para convergencia
+    max_iter=2000,
     solver="lbfgs",
     random_state=42,
     class_weight='balanced',
     penalty='l2'
 )
-model_classification.fit(X_scaled_class, Y_class)
+base_model.fit(X_scaled_class, Y_class)
 
-# ✅ MEJORA: Aplicar calibración de probabilidades
+# ✅ Guardar los coeficientes ANTES de calibrar
+base_coef = base_model.coef_[0].copy()
+
+# ✅ Aplicar calibración de probabilidades
 from sklearn.calibration import CalibratedClassifierCV
-model_classification = CalibratedClassifierCV(model_classification, method='sigmoid', cv=5)
+model_classification = CalibratedClassifierCV(base_model, method='sigmoid', cv=5)
 model_classification.fit(X_scaled_class, Y_class)
 
 # ===============================
@@ -152,10 +155,11 @@ tendencia = grade_past * (hours_now / (hours_past + 1))
 # 10. REALIZAR PREDICCIÓN
 # ===============================
 if st.button("🔮 Predecir Rendimiento", type="primary"):
-    # Mostrar información personal capturada (solo para referencia)
+    # Mostrar información personal capturada
     st.markdown("---")
     st.caption(f"👤 **Información capturada:** {gender} | {semester}° Semestre")
     st.markdown("---")
+    
     # Crear DataFrame con nuevos datos
     new_data = pd.DataFrame({
         "Materias pasadas": [courses_past],
@@ -467,9 +471,9 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     max_grade = grades_scenarios[optimal_idx]
     
     st.info(f"💡 **Punto óptimo:** Con **{optimal_hours} horas** semanales podrías alcanzar **{max_grade:.2f}**")
-    
-    # ===============================
-# 16. IMPORTANCIA DE VARIABLES (MEJORADO)
+
+# ===============================
+# 16. IMPORTANCIA DE VARIABLES (CORREGIDO)
 # ===============================
 st.markdown("---")
 st.subheader("📈 ¿Qué Afecta Más a tu Calificación?")
@@ -489,14 +493,14 @@ feature_names_readable = {
     "tendencia_academica": "Tendencia académica"
 }
 
-# Obtener coeficientes en valor absoluto
-coef_importance = np.abs(model_classification.coef_[0])
+# ✅ SOLUCIÓN: Usar los coeficientes guardados del modelo base
+coef_importance = np.abs(base_coef)
 
-# ✅ MEJORA: Normalizar por desviación estándar de cada feature
+# Normalizar por desviación estándar de cada feature
 feature_std = X_scaled_class.std(axis=0)
 coef_normalized = coef_importance / (feature_std + 1e-8)
 
-# ✅ MEJORA: Aplicar escala logarítmica para reducir el dominio de un factor
+# Aplicar escala logarítmica
 coef_log = np.log1p(coef_normalized)
 
 feature_importance = pd.DataFrame({
