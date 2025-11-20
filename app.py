@@ -80,7 +80,7 @@ X_scaled_class = scaler_class.fit_transform(X)
 
 # ✅ CAMBIO: Usar probabilidades calibradas y menos regularización
 model_classification = LogisticRegression(
-    C=1.0,  # ← AUMENTADO a 1.0 para menos regularización
+    C=0.5,  
     max_iter=2000,  # ← Más iteraciones para convergencia
     solver="lbfgs",
     random_state=42,
