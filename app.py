@@ -207,6 +207,7 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     probability = model_classification.predict_proba(new_data_scaled_class)[0][1]
     
     # --- Predicción LOGÍSTICA (para comparar) ---
+    prediction_logistic = model_logistic.predict(new_data_scaled_class)[0]
     probability_logistic = model_logistic.predict_proba(new_data_scaled_class)[0][1]
     
     st.markdown("---")
@@ -320,6 +321,57 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
             st.write("• ⏰ Aumentar horas de estudio semanales")
         if intensidad < 1.0:
             st.write("• 📖 Dedicar más tiempo por materia")
+    
+    # Consejos de estudio con Pomodoro
+    st.markdown("---")
+    st.markdown("### 🎯 Consejos de Estudio Recomendados")
+    
+    st.info("""
+    **⏱️ Técnica Pomodoro:**
+    - 25 minutos de estudio concentrado
+    - 5 minutos de descanso
+    - Después de 4 ciclos, descansa 15-30 minutos
+    
+    **💡 Estrategia según tu situación:**
+    """)
+    
+    if probability >= 0.6 and predicted_grade >= 9.2:
+        st.success("""
+        ✅ **Para mantener tu excelencia:**
+        1. Sigue con ciclos Pomodoro de 25-30 min
+        2. Revisa regularmente el material cada semana
+        3. Realiza resúmenes y mapas conceptuales
+        4. Practica con ejercicios de años anteriores
+        """)
+    elif probability >= 0.4 and predicted_grade >= 8.8:
+        st.info("""
+        ⭐ **Para mejorar tu rendimiento:**
+        1. Aumenta a 2-3 ciclos Pomodoro diarios
+        2. Distribuye el estudio en varios días (no todo el fin de semana)
+        3. Usa técnicas activas: explicar a otros, flashcards
+        4. Haz grupos de estudio colaborativo
+        5. Dedica 1 sesión extra a las materias difíciles
+        """)
+    else:
+        st.warning("""
+        ⚠️ **Para impulsar tu desempeño:**
+        1. Comienza con 3-4 ciclos Pomodoro diarios
+        2. Estudia ANTES de clase, no después
+        3. Utiliza: resúmenes, mapas mentales y esquemas
+        4. Enseña el contenido a alguien más (enseña para aprender)
+        5. Realiza quizzes de autoevaluación frecuentes
+        6. Aumenta gradualmente a 5-6 ciclos Pomodoro
+        7. Consulta a profesores en horarios de atención
+        """)
+    
+    st.markdown("""
+    **🌟 Recomendaciones Generales:**
+    - Descansa 7-8 horas diarias
+    - Evita redes sociales durante sesiones de estudio
+    - Mantén un ambiente limpio y sin distracciones
+    - Come bien antes de estudiar
+    - Celebra pequeños logros y avances
+    """)
 
 # Estadísticas del dataset - se actualiza con datos del usuario
 st.markdown("---")
