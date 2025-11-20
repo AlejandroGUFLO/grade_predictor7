@@ -13,15 +13,23 @@ import plotly.graph_objects as go
 def load_and_prepare_data():
     df = pd.read_excel("proyectom.xlsx")
     
+    # Limpiar nombres de columnas (remover espacios extra)
+    df.columns = df.columns.str.strip()
+    
+    # Remover filas con valores nulos en columnas críticas
+    critical_cols = ["Calificaciones pasadas", "Horas estudio pasadas", "Horas de estudio actuales", 
+                     "Materias pasadas", "Materias nuevas"]
+    df = df.dropna(subset=critical_cols)
+    
     # Target variables
     df["HighPerformance"] = (df["Calificaciones pasadas"] >= 9.2).astype(int)
     
     # Feature engineering - variables normalizadas
-    df["eficiencia_estudio_pasado"] = df["Calificaciones pasadas"] / (df["Horas estudio pasadas "] + 1)
-    df["intensidad_estudio_actual"] = df["Horas de estudio actuales "] / (df["Materias nuevas"] + 1)
-    df["cambio_horas"] = df["Horas de estudio actuales "] - df["Horas estudio pasadas "]
-    df["ratio_materias"] = df["Materias nuevas"] / (df["Materias pasadas "] + 1)
-    df["tendencia_academica"] = df["Calificaciones pasadas"] * (df["Horas de estudio actuales "] / (df["Horas estudio pasadas "] + 1))
+    df["eficiencia_estudio_pasado"] = df["Calificaciones pasadas"] / (df["Horas estudio pasadas"] + 1)
+    df["intensidad_estudio_actual"] = df["Horas de estudio actuales"] / (df["Materias nuevas"] + 1)
+    df["cambio_horas"] = df["Horas de estudio actuales"] - df["Horas estudio pasadas"]
+    df["ratio_materias"] = df["Materias nuevas"] / (df["Materias pasadas"] + 1)
+    df["tendencia_academica"] = df["Calificaciones pasadas"] * (df["Horas de estudio actuales"] / (df["Horas estudio pasadas"] + 1))
     
     return df
 
@@ -29,10 +37,10 @@ df = load_and_prepare_data()
 
 # Features mejoradas y balanceadas
 feature_cols = [
-    "Materias pasadas ",
+    "Materias pasadas",
     "Materias nuevas",
-    "Horas de estudio actuales ",
-    "Horas estudio pasadas ",
+    "Horas de estudio actuales",
+    "Horas estudio pasadas",
     "Calificaciones pasadas",
     "eficiencia_estudio_pasado",
     "intensidad_estudio_actual",
@@ -41,26 +49,39 @@ feature_cols = [
     "tendencia_academica"
 ]
 
-X = df[feature_cols]
+X = df[feature_cols].copy()
 
 # Modelo de REGRESIÓN para predecir la calificación exacta
 Y_grade = df["Calificaciones pasadas"]
 scaler_reg = StandardScaler()
 X_scaled_reg = scaler_reg.fit_transform(X)
-model_regression = RandomForestRegressor(n_estimators=150, random_state=42, max_depth=6, min_samples_leaf=2)
+model_regression = RandomForestRegressor(
+    n_estimators=200, 
+    random_state=42, 
+    max_depth=8, 
+    min_samples_leaf=2,
+    min_samples_split=3
+)
 model_regression.fit(X_scaled_reg, Y_grade)
 
 # Modelo de CLASIFICACIÓN LOGÍSTICA para probabilidad de alto rendimiento (≥9.2)
-# Este modelo predice: ¿Tendrás alto rendimiento (SÍ/NO)?
-# Usa regresión logística mejorada con Random Forest Classifier
 Y_class = df["HighPerformance"]
 scaler_class = StandardScaler()
 X_scaled_class = scaler_class.fit_transform(X)
 
 model_classification = LogisticRegression(
-    C=1.0, max_iter=500, solver="lbfgs"
+    C=0.5, 
+    max_iter=1000, 
+    solver="lbfgs",
+    random_state=42,
+    class_weight='balanced'  # Para manejar desbalance de clases
 )
 model_classification.fit(X_scaled_class, Y_class)
+
+# Función para validar predicciones
+def validate_prediction(predicted_grade):
+    """Asegurar que la predicción esté en rango válido"""
+    return np.clip(predicted_grade, 6.0, 10.0)
 
 # ------------------------------
 # UI Interfaz streamlit
@@ -109,10 +130,10 @@ tendencia = grade_past * (hours_now / (hours_past + 1))
 # ------------------------------
 if st.button("🔮 Predecir Rendimiento", type="primary"):
     new_data = pd.DataFrame({
-        "Materias pasadas ": [courses_past],
+        "Materias pasadas": [courses_past],
         "Materias nuevas": [courses_now],
-        "Horas de estudio actuales ": [hours_now],
-        "Horas estudio pasadas ": [hours_past],
+        "Horas de estudio actuales": [hours_now],
+        "Horas estudio pasadas": [hours_past],
         "Calificaciones pasadas": [grade_past],
         "eficiencia_estudio_pasado": [eficiencia],
         "intensidad_estudio_actual": [intensidad],
@@ -124,8 +145,9 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     # Predicción de calificación
     new_data_scaled_reg = scaler_reg.transform(new_data)
     predicted_grade = model_regression.predict(new_data_scaled_reg)[0]
+    predicted_grade = validate_prediction(predicted_grade)
     
-    # Predicción de clasificación (>9.2)
+    # Predicción de clasificación (>9.2) - REGRESIÓN LOGÍSTICA
     new_data_scaled_class = scaler_class.transform(new_data)
     prediction_class = model_classification.predict(new_data_scaled_class)[0]
     probability = model_classification.predict_proba(new_data_scaled_class)[0][1]
@@ -188,13 +210,13 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     
     # Gráfico tipo velocímetro para calificación
     fig = go.Figure(go.Indicator(
-        mode = "gauge+number+delta",
-        value = predicted_grade,
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': "Calificación Esperada", 'font': {'size': 20}},
-        delta = {'reference': grade_past, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
-        number = {'font': {'size': 40}},
-        gauge = {
+        mode="gauge+number+delta",
+        value=predicted_grade,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': "Calificación Esperada", 'font': {'size': 20}},
+        delta={'reference': grade_past, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+        number={'font': {'size': 40}},
+        gauge={
             'axis': {'range': [6, 10], 'tickwidth': 2, 'tickcolor': "darkblue"},
             'bar': {'color': "darkblue", 'thickness': 0.75},
             'steps': [
@@ -268,7 +290,7 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     else:
         st.info("**✅ Buen camino - Estás cerca del alto rendimiento**")
         st.write(f"• 🎯 Solo necesitas **{9.2 - predicted_grade:.2f} puntos** más para llegar a 9.2")
-        st.write(f"• ⏰ Aumentar {2-3} horas de estudio semanales podría ser suficiente")
+        st.write(f"• ⏰ Aumentar 2-3 horas de estudio semanales podría ser suficiente")
         st.write("• 📖 Enfócate en técnicas de estudio más efectivas")
     
     # Simulador
@@ -286,10 +308,10 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         sim_tendencia = grade_past * (h / (hours_past + 1))
         
         sim_data = pd.DataFrame({
-            "Materias pasadas ": [courses_past],
+            "Materias pasadas": [courses_past],
             "Materias nuevas": [courses_now],
-            "Horas de estudio actuales ": [h],
-            "Horas estudio pasadas ": [hours_past],
+            "Horas de estudio actuales": [h],
+            "Horas estudio pasadas": [hours_past],
             "Calificaciones pasadas": [grade_past],
             "eficiencia_estudio_pasado": [sim_eficiencia],
             "intensidad_estudio_actual": [sim_intensidad],
@@ -300,6 +322,7 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         
         sim_scaled_reg = scaler_reg.transform(sim_data)
         sim_grade = model_regression.predict(sim_scaled_reg)[0]
+        sim_grade = validate_prediction(sim_grade)
         
         sim_scaled_class = scaler_class.transform(sim_data)
         sim_prob = model_classification.predict_proba(sim_scaled_class)[0][1]
@@ -347,22 +370,23 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     st.plotly_chart(fig2, use_container_width=True)
     
     # Encontrar horas óptimas
-    optimal_hours = hours_scenarios[grades_scenarios.index(max(grades_scenarios))]
-    max_grade = max(grades_scenarios)
+    optimal_idx = np.argmax(grades_scenarios)
+    optimal_hours = hours_scenarios[optimal_idx]
+    max_grade = grades_scenarios[optimal_idx]
     
     st.info(f"💡 **Punto óptimo:** Con **{optimal_hours} horas** semanales podrías alcanzar **{max_grade:.2f}**")
     
-    # Importancia de variables - CORREGIDO
+    # Importancia de variables - CORREGIDO PARA REGRESIÓN LOGÍSTICA
     st.markdown("---")
     st.subheader("📈 ¿Qué Afecta Más a tu Calificación?")
     
     st.markdown("**Análisis basado en Regresión Logística:**\nEstos factores influyen en tu probabilidad de alcanzar alto rendimiento (≥9.2)")
     
     feature_names_readable = {
-        "Materias pasadas ": "Materias semestre anterior",
+        "Materias pasadas": "Materias semestre anterior",
         "Materias nuevas": "Materias actuales",
-        "Horas de estudio actuales ": "Horas de estudio actuales",
-        "Horas estudio pasadas ": "Horas semestre anterior",
+        "Horas de estudio actuales": "Horas de estudio actuales",
+        "Horas estudio pasadas": "Horas semestre anterior",
         "Calificaciones pasadas": "Calificación anterior",
         "eficiencia_estudio_pasado": "Eficiencia de estudio",
         "intensidad_estudio_actual": "Intensidad (horas/materia)",
@@ -371,10 +395,12 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         "tendencia_academica": "Tendencia académica"
     }
     
-    # Usar importancias del modelo de clasificación (regresión logística)
+    # Usar coeficientes del modelo de Regresión Logística (valor absoluto)
+    coef_importance = np.abs(model_classification.coef_[0])
+    
     feature_importance = pd.DataFrame({
         'Factor': [feature_names_readable[col] for col in feature_cols],
-        'Importancia': model_classification.feature_importances_
+        'Importancia': coef_importance
     }).sort_values('Importancia', ascending=False)
     
     # Normalizar importancias a porcentaje
@@ -413,5 +439,5 @@ with st.expander("📊 Ver estadísticas del dataset"):
     with col3:
         st.metric("Alto rendimiento", f"{(Y_class.sum()/len(Y_class)*100):.1f}%")
     with col4:
-        st.metric("Horas promedio", f"{df['Horas de estudio actuales '].mean():.1f}")
+        st.metric("Horas promedio", f"{df['Horas de estudio actuales'].mean():.1f}")
 
