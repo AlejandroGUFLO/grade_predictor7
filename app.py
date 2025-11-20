@@ -90,13 +90,13 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("📚 Semestre Anterior")
     courses_past = st.number_input("Materias cursadas", 1, 15, 7)
-    hours_past = st.number_input("Horas de estudio semanales", 1, 30, 5)
+    hours_past = st.number_input("Horas de estudio semanales (pasado)", 1, 30, 5)
     grade_past = st.number_input("Calificación final", 6.0, 10.0, 9.0, step=0.1)
 
 with col2:
     st.subheader("📖 Semestre Actual")
     courses_now = st.number_input("Materias cursando", 1, 15, 8)
-    hours_now = st.number_input("Horas de estudio semanales", 1, 30, 5)
+    hours_now = st.number_input("Horas de estudio semanales (actual)", 1, 30, 5)
 
 # ------------------------------
 # FEATURES DERIVADAS
