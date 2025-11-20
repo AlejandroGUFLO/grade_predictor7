@@ -321,9 +321,32 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         if intensidad < 1.0:
             st.write("• 📖 Dedicar más tiempo por materia")
 
-# Estadísticas del dataset
+# Estadísticas del dataset - se actualiza con datos del usuario
 st.markdown("---")
-st.subheader("📊 Estadísticas Descriptivas del Dataset")
+st.subheader("📊 Estadísticas Descriptivas del Dataset + Tu Predicción")
+
+# Crear una copia del dataframe y agregar los datos del usuario actual
+df_updated = df.copy()
+
+# Crear una fila con los datos del usuario actual
+user_row = pd.DataFrame({
+    "Materias pasadas ": [courses_past],
+    "Materias nuevas": [courses_now],
+    "Horas estudio pasadas ": [hours_past],
+    "Horas de estudio actuales ": [hours_now],
+    "Calificaciones pasadas": [grade_past],
+    "eficiencia_estudio_pasado": [eficiencia],
+    "intensidad_estudio_actual": [intensidad],
+    "cambio_horas": [cambio_h],
+    "ratio_materias": [ratio_mat],
+    "tendencia_academica": [tendencia],
+    "potencial_mejora": [potencial_mejora],
+    "carga_academica": [carga_academica],
+    "historial_fuerte": [historial_fuerte]
+})
+
+# Concatenar el dataframe original con los datos del usuario
+df_updated = pd.concat([df_updated, user_row], ignore_index=True)
 
 variables_to_analyze = {
     "Materias pasadas ": "Materias Semestre Pasado",
@@ -336,7 +359,7 @@ variables_to_analyze = {
 stats_data = []
 
 for col, label in variables_to_analyze.items():
-    data = df[col]
+    data = df_updated[col]
     stats_data.append({
         "Variable": label,
         "N": len(data),
@@ -351,3 +374,4 @@ for col, label in variables_to_analyze.items():
 
 stats_df = pd.DataFrame(stats_data)
 st.dataframe(stats_df, use_container_width=True)
+st.caption("✨ Las estadísticas se actualizan con tus datos cada vez que cambias los valores")
