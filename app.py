@@ -459,66 +459,66 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     st.info(f"💡 **Punto óptimo:** Con **{optimal_hours} horas** semanales podrías alcanzar **{max_grade:.2f}**")
     
     # ===============================
-    # 16. IMPORTANCIA DE VARIABLES
-    # ===============================
-    st.markdown("---")
-    st.subheader("📈 ¿Qué Afecta Más a tu Calificación?")
+# 16. IMPORTANCIA DE VARIABLES (MEJORADO)
+# ===============================
+st.markdown("---")
+st.subheader("📈 ¿Qué Afecta Más a tu Calificación?")
 
-    st.markdown("**Análisis basado en Regresión Logística:**\nEstos factores influyen en tu probabilidad de alcanzar alto rendimiento (≥9.2)")
+st.markdown("**Análisis basado en Regresión Logística:**\nEstos factores influyen en tu probabilidad de alcanzar alto rendimiento (≥9.2)")
 
-    feature_names_readable = {
-        "Materias pasadas": "Materias semestre anterior",
-        "Materias nuevas": "Materias actuales",
-        "Horas de estudio actuales": "Horas de estudio actuales",
-        "Horas estudio pasadas": "Horas semestre anterior",
-        "Calificaciones pasadas": "Calificación anterior",
-        "eficiencia_estudio_pasado": "Eficiencia de estudio",
-        "intensidad_estudio_actual": "Intensidad (horas/materia)",
-        "cambio_horas": "Cambio en horas",
-        "ratio_materias": "Cambio en materias",
-        "tendencia_academica": "Tendencia académica"
-    }
+feature_names_readable = {
+    "Materias pasadas": "Materias semestre anterior",
+    "Materias nuevas": "Materias actuales",
+    "Horas de estudio actuales": "Horas de estudio actuales",
+    "Horas estudio pasadas": "Horas semestre anterior",
+    "Calificaciones pasadas": "Calificación anterior",
+    "eficiencia_estudio_pasado": "Eficiencia de estudio",
+    "intensidad_estudio_actual": "Intensidad (horas/materia)",
+    "cambio_horas": "Cambio en horas",
+    "ratio_materias": "Cambio en materias",
+    "tendencia_academica": "Tendencia académica"
+}
 
-    # Obtener coeficientes en valor absoluto
-    coef_importance = np.abs(model_classification.coef_[0])
+# Obtener coeficientes en valor absoluto
+coef_importance = np.abs(model_classification.coef_[0])
 
-    # ✅ MEJORA: Normalizar por desviación estándar de cada feature
-    feature_std = X_scaled_class.std(axis=0)
-    coef_normalized = coef_importance / (feature_std + 1e-8)
+# ✅ MEJORA: Normalizar por desviación estándar de cada feature
+feature_std = X_scaled_class.std(axis=0)
+coef_normalized = coef_importance / (feature_std + 1e-8)
 
-    # ✅ MEJORA: Aplicar escala logarítmica para reducir el dominio de un factor
-    coef_log = np.log1p(coef_normalized)
+# ✅ MEJORA: Aplicar escala logarítmica para reducir el dominio de un factor
+coef_log = np.log1p(coef_normalized)
 
-    feature_importance = pd.DataFrame({
-        'Factor': [feature_names_readable[col] for col in feature_cols],
-        'Importancia': coef_log
-    }).sort_values('Importancia', ascending=False)
+feature_importance = pd.DataFrame({
+    'Factor': [feature_names_readable[col] for col in feature_cols],
+    'Importancia': coef_log
+}).sort_values('Importancia', ascending=False)
 
-    # Normalizar a porcentaje
-    feature_importance['Porcentaje'] = (feature_importance['Importancia'] / feature_importance['Importancia'].sum() * 100)
+# Normalizar a porcentaje
+feature_importance['Porcentaje'] = (feature_importance['Importancia'] / feature_importance['Importancia'].sum() * 100)
 
-    fig3 = go.Figure(go.Bar(
-        x=feature_importance['Porcentaje'],
-        y=feature_importance['Factor'],
-        orientation='h',
-        marker=dict(
-            color=feature_importance['Porcentaje'],
-            colorscale='Greens',
-            showscale=False
-        ),
-        text=feature_importance['Porcentaje'].round(1).astype(str) + '%',
-        textposition='auto',
-    ))
-    fig3.update_layout(
-        title="Importancia relativa - Regresión Logística (Probabilidad de Alto Rendimiento)",
-        xaxis_title="Importancia (%)",
-        height=400,
-        showlegend=False
-    )
+fig3 = go.Figure(go.Bar(
+    x=feature_importance['Porcentaje'],
+    y=feature_importance['Factor'],
+    orientation='h',
+    marker=dict(
+        color=feature_importance['Porcentaje'],
+        colorscale='Greens',
+        showscale=False
+    ),
+    text=feature_importance['Porcentaje'].round(1).astype(str) + '%',
+    textposition='auto',
+))
+fig3.update_layout(
+    title="Importancia relativa - Regresión Logística (Probabilidad de Alto Rendimiento)",
+    xaxis_title="Importancia (%)",
+    height=400,
+    showlegend=False
+)
 
-    st.plotly_chart(fig3, use_container_width=True)
+st.plotly_chart(fig3, use_container_width=True)
 
-    st.caption("💡 Los factores más arriba son los que más influyen en tu probabilidad de alcanzar ≥9.2")
+st.caption("💡 Los factores más arriba son los que más influyen en tu probabilidad de alcanzar ≥9.2")
 
 # ===============================
 # 17. ESTADÍSTICAS DEL DATASET
