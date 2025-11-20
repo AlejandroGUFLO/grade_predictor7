@@ -110,7 +110,7 @@ st.markdown("*Predice tu calificación esperada y probabilidad de alto rendimien
 # ===============================
 # 7. SECCIÓN: INFORMACIÓN PERSONAL
 # ===============================
-sst.markdown("---")
+st.markdown("---")
 st.subheader("👤 Información Personal")
 
 col_info1, col_info2 = st.columns(2)
