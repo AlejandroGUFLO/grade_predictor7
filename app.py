@@ -322,13 +322,32 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
             st.write("• 📖 Dedicar más tiempo por materia")
 
 # Estadísticas del dataset
-with st.expander("📊 Ver estadísticas del dataset"):
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Estudiantes analizados", len(df))
-    with col2:
-        st.metric("Calificación promedio", f"{df['Calificaciones pasadas'].mean():.2f}")
-    with col3:
-        st.metric("Con potencial alto", f"{(Y_class.sum()/len(Y_class)*100):.1f}%")
-    with col4:
-        st.metric("Horas promedio", f"{df['Horas de estudio actuales '].mean():.1f}")
+st.markdown("---")
+st.subheader("📊 Estadísticas Descriptivas del Dataset")
+
+variables_to_analyze = {
+    "Materias pasadas ": "Materias Semestre Pasado",
+    "Materias nuevas": "Materias Semestre Actual",
+    "Horas estudio pasadas ": "Horas de Estudio Pasado",
+    "Horas de estudio actuales ": "Horas de Estudio Actual",
+    "Calificaciones pasadas": "Calificaciones"
+}
+
+stats_data = []
+
+for col, label in variables_to_analyze.items():
+    data = df[col]
+    stats_data.append({
+        "Variable": label,
+        "N": len(data),
+        "Media": f"{data.mean():.2f}",
+        "Mediana": f"{data.median():.2f}",
+        "Desv. Estándar": f"{data.std():.2f}",
+        "Mínimo": f"{data.min():.2f}",
+        "Máximo": f"{data.max():.2f}",
+        "Q1": f"{data.quantile(0.25):.2f}",
+        "Q3": f"{data.quantile(0.75):.2f}"
+    })
+
+stats_df = pd.DataFrame(stats_data)
+st.dataframe(stats_df, use_container_width=True)
