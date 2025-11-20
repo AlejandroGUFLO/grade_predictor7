@@ -1,141 +1,143 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
-import streamlit as st
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 import plotly.graph_objects as go
 
-# ===============================
-# 1. CARGAR Y PREPARAR DATOS
-# ===============================
+# ------------------------------
+# Load and prepare data
+# ------------------------------
 @st.cache_data
 def load_and_prepare_data():
-    """Carga el archivo Excel y realiza ingeniería de características"""
     df = pd.read_excel("proyectom.xlsx")
     
-    # Limpiar nombres de columnas (remover espacios extra)
-    df.columns = df.columns.str.strip()
+    # Feature engineering - variables normalizadas
+    df["eficiencia_estudio_pasado"] = df["Calificaciones pasadas"] / (df["Horas estudio pasadas "] + 1)
+    df["intensidad_estudio_actual"] = df["Horas de estudio actuales "] / (df["Materias nuevas"] + 1)
+    df["cambio_horas"] = df["Horas de estudio actuales "] - df["Horas estudio pasadas "]
+    df["ratio_materias"] = df["Materias nuevas"] / (df["Materias pasadas "] + 1)
+    df["tendencia_academica"] = df["Calificaciones pasadas"] * (df["Horas de estudio actuales "] / (df["Horas estudio pasadas "] + 1))
     
-    # Remover filas con valores nulos en columnas críticas
-    critical_cols = ["Calificaciones pasadas", "Horas estudio pasadas", "Horas de estudio actuales", 
-                     "Materias pasadas", "Materias nuevas"]
-    df = df.dropna(subset=critical_cols)
-    
-    # ✅ CAMBIO CRÍTICO: Usar la calificación de REGRESIÓN como objetivo
-    # Ya no usamos las calificaciones pasadas, sino las predichas
-    
-    # Ingeniería de características
-    df["eficiencia_estudio_pasado"] = df["Calificaciones pasadas"] / (df["Horas estudio pasadas"] + 0.1)
-    df["intensidad_estudio_actual"] = df["Horas de estudio actuales"] / (df["Materias nuevas"] + 0.1)
-    df["cambio_horas"] = df["Horas de estudio actuales"] - df["Horas estudio pasadas"]
-    df["ratio_materias"] = df["Materias nuevas"] / (df["Materias pasadas"] + 0.1)
-    df["tendencia_academica"] = df["Calificaciones pasadas"] * (df["Horas de estudio actuales"] / (df["Horas estudio pasadas"] + 0.1))
-    df["calificacion_cuadrada"] = df["Calificaciones pasadas"] ** 2
-    df["horas_totales"] = df["Horas de estudio actuales"] + df["Horas estudio pasadas"]
-    df["momentum_estudio"] = df["Calificaciones pasadas"] * df["Horas de estudio actuales"]
+    # ✅ NUEVAS FEATURES PREDICTIVAS
+    df["potencial_mejora"] = (df["Horas de estudio actuales "] - df["Horas estudio pasadas "]) * df["Calificaciones pasadas"] / 10
+    df["carga_academica"] = df["Materias nuevas"] * (df["Horas de estudio actuales "] + 1)
+    df["historial_fuerte"] = (df["Calificaciones pasadas"] >= 9.0).astype(int)
     
     return df
 
-# Cargar datos
 df = load_and_prepare_data()
 
-# ===============================
-# 2. DEFINIR FEATURES
-# ===============================
+# Features
 feature_cols = [
-    "Materias pasadas",
+    "Materias pasadas ",
     "Materias nuevas",
-    "Horas de estudio actuales",
-    "Horas estudio pasadas",
+    "Horas de estudio actuales ",
+    "Horas estudio pasadas ",
     "Calificaciones pasadas",
     "eficiencia_estudio_pasado",
     "intensidad_estudio_actual",
     "cambio_horas",
     "ratio_materias",
     "tendencia_academica",
-    "calificacion_cuadrada",
-    "horas_totales",
-    "momentum_estudio"
+    "potencial_mejora",
+    "carga_academica",
+    "historial_fuerte"
 ]
 
-X = df[feature_cols].copy()
+X = df[feature_cols]
 
-# ===============================
-# 3. ENTRENAR MODELO DE REGRESIÓN
-# ===============================
+# --------------------------------------------------------
+# MODELO 1: REGRESIÓN (CALIFICACIÓN EXACTA)
+# --------------------------------------------------------
 Y_grade = df["Calificaciones pasadas"]
 scaler_reg = StandardScaler()
 X_scaled_reg = scaler_reg.fit_transform(X)
-
 model_regression = RandomForestRegressor(
-    n_estimators=200, 
-    random_state=42, 
-    max_depth=8, 
-    min_samples_leaf=2,
-    min_samples_split=3
+    n_estimators=150, random_state=42, max_depth=6, min_samples_leaf=2
 )
 model_regression.fit(X_scaled_reg, Y_grade)
 
-# ===============================
-# 4. ENTRENAR MODELO DE REGRESIÓN LOGÍSTICA
-# ===============================
-# ✅ NUEVA ESTRATEGIA: Primero entrenar regresión, luego usar sus predicciones
-# para entrenar el clasificador
+# --------------------------------------------------------
+# MODELO 2: CLASIFICACIÓN MEJORADA con lógica predictiva
+# --------------------------------------------------------
+# ✅ Crear objetivo basado en COMBINACIÓN de factores favorables
+def create_high_performance_target(row):
+    """
+    Determina si un estudiante tiene potencial de alto rendimiento
+    basado en múltiples factores predictivos
+    """
+    score = 0
+    
+    # Factor 1: Calificación histórica fuerte
+    if row["Calificaciones pasadas"] >= 9.2:
+        score += 3
+    elif row["Calificaciones pasadas"] >= 8.8:
+        score += 2
+    elif row["Calificaciones pasadas"] >= 8.5:
+        score += 1
+    
+    # Factor 2: Incremento en horas de estudio
+    if row["cambio_horas"] > 2:
+        score += 2
+    elif row["cambio_horas"] > 0:
+        score += 1
+    
+    # Factor 3: Buena eficiencia de estudio
+    if row["eficiencia_estudio_pasado"] > 1.5:
+        score += 2
+    elif row["eficiencia_estudio_pasado"] > 1.2:
+        score += 1
+    
+    # Factor 4: Carga académica manejable
+    if row["Materias nuevas"] <= row["Materias pasadas "]:
+        score += 1
+    
+    # Factor 5: Intensidad adecuada
+    if row["intensidad_estudio_actual"] >= 1.0:
+        score += 1
+    
+    # ✅ Si tiene 5+ puntos, tiene alto potencial
+    return 1 if score >= 5 else 0
 
-# Entrenar regresión primero para obtener predicciones
-from sklearn.model_selection import cross_val_predict
+# Aplicar la función para crear el target
+Y_class = df.apply(create_high_performance_target, axis=1)
 
-# Obtener predicciones del modelo de regresión usando validación cruzada
-predicted_grades = cross_val_predict(model_regression, X_scaled_reg, Y_grade, cv=5)
-
-# ✅ Crear variable objetivo basada en PREDICCIONES, no en datos reales
-Y_class = (predicted_grades >= 9.2).astype(int)
-
-# Si hay muy pocos casos positivos, ajustar el umbral
+# Verificar distribución
 positive_rate = Y_class.sum() / len(Y_class)
-if positive_rate < 0.15:  # Si menos del 15% son positivos
-    # Usar un umbral más bajo
-    Y_class = (predicted_grades >= 9.0).astype(int)
+st.sidebar.info(f"📊 Distribución de datos:\n- Alto potencial: {positive_rate*100:.1f}%\n- Casos positivos: {Y_class.sum()}/{len(Y_class)}")
 
 scaler_class = StandardScaler()
 X_scaled_class = scaler_class.fit_transform(X)
 
-# ✅ Entrenar modelo base con configuración balanceada
-base_model = LogisticRegression(
-    C=1.0,  
-    max_iter=3000,
-    solver="liblinear",
-    random_state=42,
-    class_weight='balanced',
-    penalty='l2'
+# ✅ Usar Gradient Boosting que maneja mejor datos desbalanceados
+model_classification = GradientBoostingClassifier(
+    n_estimators=100,
+    learning_rate=0.1,
+    max_depth=3,
+    min_samples_split=5,
+    min_samples_leaf=3,
+    random_state=42
 )
-base_model.fit(X_scaled_class, Y_class)
-
-# ✅ Guardar los coeficientes ANTES de calibrar
-base_coef = base_model.coef_[0].copy()
-
-# ✅ Aplicar calibración de probabilidades
-from sklearn.calibration import CalibratedClassifierCV
-model_classification = CalibratedClassifierCV(base_model, method='sigmoid', cv=3)
 model_classification.fit(X_scaled_class, Y_class)
 
-# ===============================
-# 5. FUNCIÓN DE VALIDACIÓN
-# ===============================
-def validate_prediction(predicted_grade):
-    """Asegurar que la predicción esté en rango válido (6-10)"""
-    return np.clip(predicted_grade, 6.0, 10.0)
+# También entrenar Logistic Regression para comparación
+model_logistic = LogisticRegression(
+    C=0.5,
+    max_iter=1000,
+    solver="liblinear",
+    class_weight='balanced',
+    random_state=42
+)
+model_logistic.fit(X_scaled_class, Y_class)
 
-# ===============================
-# 6. INTERFAZ STREAMLIT
-# ===============================
+# ------------------------------
+# UI
+# ------------------------------
 st.title("🎓 Predictor de Calificaciones")
 st.markdown("*Predice tu calificación esperada y probabilidad de alto rendimiento*")
 
-# ===============================
-# 7. SECCIÓN: INFORMACIÓN PERSONAL
-# ===============================
 st.markdown("---")
 st.subheader("👤 Información Personal")
 
@@ -147,9 +149,6 @@ with col_info1:
 with col_info2:
     semester = st.selectbox("Semestre actual", list(range(1, 10)), format_func=lambda x: f"{x}° semestre", key="semester")
 
-# ===============================
-# 8. SECCIÓN: DATOS DE ENTRADA
-# ===============================
 st.markdown("---")
 
 col1, col2 = st.columns(2)
@@ -165,416 +164,305 @@ with col2:
     courses_now = st.number_input("Materias cursando", min_value=1, max_value=15, value=8, key="cn")
     hours_now = st.number_input("Horas de estudio semanales", min_value=1, max_value=30, value=5, key="hn")
 
-# ===============================
-# 9. CALCULAR FEATURES DERIVADAS
-# ===============================
-eficiencia = grade_past / (hours_past + 0.1)
-intensidad = hours_now / (courses_now + 0.1)
+# ------------------------------
+# Cálculo de features derivadas
+# ------------------------------
+eficiencia = grade_past / (hours_past + 1)
+intensidad = hours_now / (courses_now + 1)
 cambio_h = hours_now - hours_past
-ratio_mat = courses_now / (courses_past + 0.1)
-tendencia = grade_past * (hours_now / (hours_past + 0.1))
-calificacion_cuadrada = grade_past ** 2
-horas_totales = hours_now + hours_past
-momentum_estudio = grade_past * hours_now
+ratio_mat = courses_now / (courses_past + 1)
+tendencia = grade_past * (hours_now / (hours_past + 1))
+potencial_mejora = (hours_now - hours_past) * grade_past / 10
+carga_academica = courses_now * (hours_now + 1)
+historial_fuerte = 1 if grade_past >= 9.0 else 0
 
-# ===============================
-# 10. REALIZAR PREDICCIÓN
-# ===============================
+# ------------------------------
+# Prediction
+# ------------------------------
 if st.button("🔮 Predecir Rendimiento", type="primary"):
-    # Mostrar información personal capturada
-    st.markdown("---")
-    st.caption(f"👤 **Información capturada:** {gender} | {semester}° Semestre")
-    st.markdown("---")
-    
-    # Crear DataFrame con nuevos datos
     new_data = pd.DataFrame({
-        "Materias pasadas": [courses_past],
+        "Materias pasadas ": [courses_past],
         "Materias nuevas": [courses_now],
-        "Horas de estudio actuales": [hours_now],
-        "Horas estudio pasadas": [hours_past],
+        "Horas de estudio actuales ": [hours_now],
+        "Horas estudio pasadas ": [hours_past],
         "Calificaciones pasadas": [grade_past],
         "eficiencia_estudio_pasado": [eficiencia],
         "intensidad_estudio_actual": [intensidad],
         "cambio_horas": [cambio_h],
         "ratio_materias": [ratio_mat],
         "tendencia_academica": [tendencia],
-        "calificacion_cuadrada": [calificacion_cuadrada],
-        "horas_totales": [horas_totales],
-        "momentum_estudio": [momentum_estudio]
+        "potencial_mejora": [potencial_mejora],
+        "carga_academica": [carga_academica],
+        "historial_fuerte": [historial_fuerte]
     })
     
-    # Predicción de calificación (Regresión)
+    # --- Predicción de REGRESIÓN ---
     new_data_scaled_reg = scaler_reg.transform(new_data)
     predicted_grade = model_regression.predict(new_data_scaled_reg)[0]
-    predicted_grade = validate_prediction(predicted_grade)
+    predicted_grade = np.clip(predicted_grade, 6.0, 10.0)
     
-    # Predicción de clasificación (Regresión Logística)
+    # --- Predicción CLASIFICACIÓN (Gradient Boosting) ---
     new_data_scaled_class = scaler_class.transform(new_data)
     prediction_class = model_classification.predict(new_data_scaled_class)[0]
     probability = model_classification.predict_proba(new_data_scaled_class)[0][1]
     
-    # ===============================
-    # 11. MOSTRAR RESULTADOS
-    # ===============================
+    # --- Predicción LOGÍSTICA (para comparar) ---
+    probability_logistic = model_logistic.predict_proba(new_data_scaled_class)[0][1]
+    
     st.markdown("---")
     st.subheader("📊 Resultados de la Predicción")
     
-    st.info("📌 **Cómo funciona:**\n- 🔴 **Regresión (izquierda)**: Predice tu calificación exacta (número entre 6-10)\n- 🟢 **Regresión Logística (derecha)**: Predice probabilidad de obtener ≥9.2 (SÍ/NO)")
-    
-    # Dos columnas para las dos predicciones
+    st.info("📌 **Cómo funciona:**\n- 🔴 **Regresión**: Predice tu calificación exacta\n- 🟢 **Clasificación ML**: Analiza tu potencial de alto rendimiento (≥9.2) basado en múltiples factores")
+
     col_a, col_b = st.columns(2)
-    
+
     with col_a:
         st.markdown("### 🎯 Calificación Esperada")
         grade_color = "🟢" if predicted_grade >= 9.2 else "🟡" if predicted_grade >= 8.5 else "🔴"
         st.markdown(f"# {grade_color} {predicted_grade:.2f}")
         change = predicted_grade - grade_past
+        st.metric("Cambio vs semestre anterior", f"{change:+.2f}", delta=f"{change:+.2f}")
+
+    with col_b:
+        st.markdown("### 📈 Potencial de Alto Rendimiento")
+        prob_color = "🟢" if probability >= 0.6 else "🟡" if probability >= 0.4 else "🔴"
+        st.markdown(f"# {prob_color} {probability*100:.1f}%")
+        result_text = "✅ ALTO" if prediction_class == 1 else "⚠️ MODERADO"
+        st.metric("Clasificación", result_text)
+    
+    # Comparación de modelos
+    st.markdown("---")
+    st.markdown("### 🔬 Comparación de Modelos")
+    col_m1, col_m2 = st.columns(2)
+    
+    with col_m1:
         st.metric(
-            "Cambio vs semestre anterior",
-            f"{change:+.2f} puntos",
-            delta=f"{change:+.2f}"
+            "🌳 Gradient Boosting",
+            f"{probability*100:.1f}%",
+            help="Modelo avanzado que analiza patrones complejos"
         )
     
-    with col_b:
-        st.markdown("### 📈 Alto Rendimiento (≥9.2)")
-        prob_color = "🟢" if probability >= 0.7 else "🟡" if probability >= 0.4 else "🔴"
-        st.markdown(f"# {prob_color} {probability*100:.1f}%")
-        result_text = "✅ SÍ" if prediction_class == 1 else "⚠️ NO"
+    with col_m2:
         st.metric(
-            "Predicción",
-            result_text,
-            delta=f"{probability*100:.1f}%"
+            "📊 Regresión Logística",
+            f"{probability_logistic*100:.1f}%",
+            help="Modelo estadístico tradicional"
         )
     
     # Métricas adicionales
     st.markdown("---")
-    col1, col2, col3 = st.columns(3)
+    st.markdown("### 📊 Análisis de Factores")
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric(
-            "Eficiencia de Estudio",
+            "Eficiencia",
             f"{eficiencia:.2f}",
-            help="Calificación / hora de estudio"
+            help="Cal. / horas",
+            delta="Buena" if eficiencia > 1.5 else "Regular" if eficiencia > 1.2 else "Baja"
         )
     
     with col2:
         st.metric(
-            "Intensidad Actual",
+            "Intensidad",
             f"{intensidad:.2f}",
-            help="Horas / materia"
+            help="Horas / materia",
+            delta="Buena" if intensidad >= 1.0 else "Aumentar"
         )
     
     with col3:
         st.metric(
-            "Cambio en Horas",
+            "Cambio Horas",
             f"{cambio_h:+.0f}h",
-            help="Diferencia vs semestre anterior"
+            help="Diferencia vs anterior",
+            delta="Positivo" if cambio_h > 0 else "Mantener" if cambio_h == 0 else "Atención"
         )
     
-    # ===============================
-    # 12. GRÁFICOS PRINCIPALES
-    # ===============================
-    col_gauge1, col_gauge2 = st.columns(2)
-    
-    with col_gauge1:
-        # Gáfico tipo velocímetro para calificación
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number+delta",
-            value=predicted_grade,
-            domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "Calificación Esperada", 'font': {'size': 20}},
-            delta={'reference': grade_past, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
-            number={'font': {'size': 50, 'color': 'darkblue'}},
-            gauge={
-                'axis': {'range': [6, 10], 'tickwidth': 2, 'tickcolor': "darkblue"},
-                'bar': {'color': "darkblue", 'thickness': 0.75},
-                'steps': [
-                    {'range': [6, 7], 'color': "#ffcccc"},
-                    {'range': [7, 8], 'color': "#fff4cc"},
-                    {'range': [8, 9], 'color': "#cce5ff"},
-                    {'range': [9, 10], 'color': "#ccffcc"}
-                ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.85,
-                    'value': 9.2
-                }
-            }
-        ))
-        fig.update_layout(height=350, margin=dict(l=10, r=10, t=50, b=10))
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col_gauge2:
-        # Gráfico de barras para probabilidades (Regresión Logística)
-        prob_bajo_graph = 1 - probability
-        categories = ["✅ Alto\nRendimiento\n(≥9.2)", "⚠️ No Alcanza\nAlto\nRendimiento"]
-        probs = [probability * 100, prob_bajo_graph * 100]
-        colors_probs = ["#2ecc71", "#e74c3c"]
-        
-        fig_prob = go.Figure(data=[
-            go.Bar(
-                x=categories,
-                y=probs,
-                marker=dict(color=colors_probs),
-                text=[f"{p:.1f}%" for p in probs],
-                textposition='auto',
-                textfont=dict(size=16, color='white'),
-                hovertemplate="<b>%{x}</b><br>Probabilidad: %{y:.1f}%<extra></extra>"
-            )
-        ])
-        
-        fig_prob.update_layout(
-            title="Predicción por Regresión Logística",
-            yaxis_title="Probabilidad (%)",
-            yaxis=dict(range=[0, 105]),
-            height=350,
-            showlegend=False,
-            hovermode='x',
-            xaxis=dict(tickfont=dict(size=10))
+    with col4:
+        st.metric(
+            "Historial",
+            "Fuerte" if historial_fuerte else "Regular",
+            help="Calificación ≥ 9.0"
         )
+    
+    # Interpretación detallada
+    st.markdown("---")
+    st.markdown("### 💡 Interpretación")
+    
+    if probability >= 0.6 and predicted_grade >= 9.2:
+        st.success(f"""
+        **🌟 ¡Excelente proyección!**
+        - Tu probabilidad de alto rendimiento es **{probability*100:.1f}%**
+        - Se espera una calificación de **{predicted_grade:.2f}**
+        - Mantén tus hábitos de estudio actuales
+        """)
+    elif probability >= 0.4 and predicted_grade >= 8.8:
+        st.info(f"""
+        **✅ Buen camino**
+        - Tienes **{probability*100:.1f}%** de alcanzar alto rendimiento
+        - Calificación esperada: **{predicted_grade:.2f}**
+        - Solo necesitas **{9.2 - predicted_grade:.2f} puntos** más para 9.2
+        - Considera aumentar 2-3 horas de estudio semanales
+        """)
+    else:
+        st.warning(f"""
+        **⚠️ Área de mejora**
+        - Probabilidad actual: **{probability*100:.1f}%**
+        - Calificación proyectada: **{predicted_grade:.2f}**
+        - Necesitas **{9.2 - predicted_grade:.2f} puntos** para alto rendimiento
         
-        st.plotly_chart(fig_prob, use_container_width=True)
-    
-    # ===============================
-    # 13. ANÁLISIS DETALLADO
-    # ===============================
-    grade_change = predicted_grade - grade_past
-    
-    st.markdown("---")
-    st.subheader("📊 Análisis Detallado")
-    
-    # Tabla de probabilidades
-    prob_bajo_table = 1 - probability
-    analysis_data = {
-        "Categoría": ["✅ Alto Rendimiento (≥9.2)", "⚠️ No Alcanza Alto Rendimiento (<9.2)"],
-        "Probabilidad": [f"{probability*100:.1f}%", f"{prob_bajo_table*100:.1f}%"],
-        "Interpretación": [
-            "Posibilidad de alcanzar la meta" if probability >= 0.5 else "Difícil pero posible",
-            "Probabilidad complementaria" if prob_bajo_table >= 0.5 else "Muy probable éxito"
-        ]
-    }
-    
-    df_analysis = pd.DataFrame(analysis_data)
-    st.dataframe(df_analysis, use_container_width=True, hide_index=True)
-    
-    # Interpretación general
-    st.markdown("**Interpretación:**")
-    if probability >= 0.7:
-        st.success(f"✅ Tienes una **alta probabilidad ({probability*100:.1f}%)** de alcanzar alto rendimiento (≥9.2)")
-    elif probability >= 0.5:
-        st.info(f"🟡 Tienes una **probabilidad moderada ({probability*100:.1f}%)** de alcanzar alto rendimiento (≥9.2)")
-    else:
-        st.warning(f"🔴 Tienes una **baja probabilidad ({probability*100:.1f}%)** de alcanzar alto rendimiento (≥9.2)")
-    
-    if grade_change > 0.3:
-        st.success(f"📈 **¡Excelente!** Se espera una mejora de **{grade_change:.2f} puntos**")
-    elif grade_change < -0.3:
-        st.error(f"📉 **Atención:** Se espera una baja de **{abs(grade_change):.2f} puntos**")
-    else:
-        st.info(f"📊 **Estable:** Calificación similar al semestre anterior ({grade_change:+.2f})")
-    
-    # ===============================
-    # 14. RECOMENDACIONES
-    # ===============================
-    st.markdown("---")
-    st.subheader("💡 Recomendaciones Personalizadas")
-    
-    if predicted_grade < 9.0:
-        st.warning("**Sugerencias para mejorar tu calificación:**")
+        **Recomendaciones:**
+        """)
         
         if eficiencia < 1.5:
-            st.write("• 📚 **Eficiencia baja:** Tu aprovechamiento es bajo. Mejora con:")
-            st.write("  - Método Pomodoro (25 min estudio + 5 min descanso)")
-            st.write("  - Estudio activo (resúmenes, mapas mentales)")
-            st.write("  - Eliminar distracciones durante el estudio")
-        
-        if intensidad < 1.5:
-            st.write(f"• ⏰ **Poco tiempo por materia:** Solo dedicas {intensidad:.1f} horas/materia")
-            st.write("  - Aumenta el tiempo dedicado a cada materia")
-            st.write("  - Enfócate en las materias más difíciles")
-        
-        if hours_now < hours_past and grade_past >= 9.0:
-            st.write(f"• ⚠️ **Reducción de horas:** Pasaste de {hours_past}h a {hours_now}h semanales")
-            st.write("  - Considera volver a tu carga anterior de horas")
-        
-        if grade_past < 8.5:
-            st.write("• 🎯 **Historial bajo:** Busca apoyo adicional:")
-            st.write("  - Grupos de estudio con compañeros")
-            st.write("  - Tutorías o asesorías especializadas")
-            st.write("  - Recursos en línea (Khan Academy, Coursera, etc.)")
+            st.write("• 📚 Mejorar eficiencia de estudio (técnicas de estudio activo)")
+        if cambio_h <= 0 and grade_past < 9.0:
+            st.write("• ⏰ Aumentar horas de estudio semanales")
+        if intensidad < 1.0:
+            st.write("• 📖 Dedicar más tiempo por materia")
     
-    elif predicted_grade >= 9.2:
-        st.success("**🌟 ¡Excelente proyección!**")
-        st.write("• ✅ Mantén tus hábitos de estudio actuales")
-        st.write("• 💪 Tu eficiencia de estudio es muy buena")
-        st.write("• 🤝 Considera ayudar a compañeros con dificultades")
-        st.write("• 📚 Podrías tomar una materia adicional si lo deseas")
-    
-    else:
-        st.info("**✅ Buen camino - Estás cerca del alto rendimiento**")
-        st.write(f"• 🎯 Solo necesitas **{9.2 - predicted_grade:.2f} puntos** más para llegar a 9.2")
-        st.write("• ⏰ Aumentar 2-3 horas de estudio semanales podría ser suficiente")
-        st.write("• 📖 Enfócate en técnicas de estudio más efectivas")
-    
-    # ===============================
-    # 15. SIMULADOR
-    # ===============================
+    # ------------------------------
+    # Simulador de escenarios
+    # ------------------------------
     st.markdown("---")
-    st.subheader("🔄 Simulador: Impacto de las Horas de Estudio")
+    st.subheader("🔄 Simulador: ¿Qué pasa si aumento mis horas?")
     
-    hours_scenarios = []
-    grades_scenarios = []
-    probs_scenarios = []
+    hours_sim = []
+    probs_sim = []
+    grades_sim = []
     
-    for h in range(1, 21):
-        sim_eficiencia = grade_past / (hours_past + 0.1)
-        sim_intensidad = h / (courses_now + 0.1)
-        sim_cambio = h - hours_past
-        sim_tendencia = grade_past * (h / (hours_past + 0.1))
-        sim_calificacion_cuadrada = grade_past ** 2
-        sim_horas_totales = h + hours_past
-        sim_momentum_estudio = grade_past * h
-        
+    for h in range(max(1, hours_now-5), min(30, hours_now+10)):
         sim_data = pd.DataFrame({
-            "Materias pasadas": [courses_past],
+            "Materias pasadas ": [courses_past],
             "Materias nuevas": [courses_now],
-            "Horas de estudio actuales": [h],
-            "Horas estudio pasadas": [hours_past],
+            "Horas de estudio actuales ": [h],
+            "Horas estudio pasadas ": [hours_past],
             "Calificaciones pasadas": [grade_past],
-            "eficiencia_estudio_pasado": [sim_eficiencia],
-            "intensidad_estudio_actual": [sim_intensidad],
-            "cambio_horas": [sim_cambio],
+            "eficiencia_estudio_pasado": [eficiencia],
+            "intensidad_estudio_actual": [h / (courses_now + 1)],
+            "cambio_horas": [h - hours_past],
             "ratio_materias": [ratio_mat],
-            "tendencia_academica": [sim_tendencia],
-            "calificacion_cuadrada": [sim_calificacion_cuadrada],
-            "horas_totales": [sim_horas_totales],
-            "momentum_estudio": [sim_momentum_estudio]
+            "tendencia_academica": [grade_past * (h / (hours_past + 1))],
+            "potencial_mejora": [(h - hours_past) * grade_past / 10],
+            "carga_academica": [courses_now * (h + 1)],
+            "historial_fuerte": [historial_fuerte]
         })
+        
+        sim_scaled = scaler_class.transform(sim_data)
+        sim_prob = model_classification.predict_proba(sim_scaled)[0][1]
         
         sim_scaled_reg = scaler_reg.transform(sim_data)
         sim_grade = model_regression.predict(sim_scaled_reg)[0]
-        sim_grade = validate_prediction(sim_grade)
+        sim_grade = np.clip(sim_grade, 6.0, 10.0)
         
-        sim_scaled_class = scaler_class.transform(sim_data)
-        sim_prob = model_classification.predict_proba(sim_scaled_class)[0][1]
-        
-        hours_scenarios.append(h)
-        grades_scenarios.append(sim_grade)
-        probs_scenarios.append(sim_prob * 100)
+        hours_sim.append(h)
+        probs_sim.append(sim_prob * 100)
+        grades_sim.append(sim_grade)
     
-    fig2 = go.Figure()
+    fig_sim = go.Figure()
     
-    # Línea de calificación esperada
-    fig2.add_trace(go.Scatter(
-        x=hours_scenarios,
-        y=grades_scenarios,
+    fig_sim.add_trace(go.Scatter(
+        x=hours_sim,
+        y=probs_sim,
         mode='lines+markers',
-        name='Calificación esperada',
-        line=dict(color='steelblue', width=3),
-        marker=dict(size=6),
+        name='Probabilidad Alto Rendimiento',
+        line=dict(color='green', width=3),
         yaxis='y1'
     ))
     
+    fig_sim.add_trace(go.Scatter(
+        x=hours_sim,
+        y=grades_sim,
+        mode='lines+markers',
+        name='Calificación Esperada',
+        line=dict(color='blue', width=3),
+        yaxis='y2'
+    ))
+    
     # Marcar punto actual
-    fig2.add_trace(go.Scatter(
+    fig_sim.add_trace(go.Scatter(
         x=[hours_now],
-        y=[predicted_grade],
+        y=[probability * 100],
         mode='markers',
         name='Tu situación actual',
         marker=dict(size=15, color='red', symbol='star'),
         yaxis='y1'
     ))
     
-    # Línea de referencia 9.2
-    fig2.add_hline(y=9.2, line_dash="dash", line_color="green", 
-                   annotation_text="Alto rendimiento (9.2)", yref='y1')
-    
-    fig2.update_layout(
-        title="¿Cómo afectan las horas de estudio a tu calificación?",
+    fig_sim.update_layout(
+        title="Impacto de las horas de estudio",
         xaxis_title="Horas de estudio semanales",
-        yaxis_title="Calificación esperada",
-        yaxis=dict(range=[6, 10]),
+        yaxis=dict(title="Probabilidad (%)", range=[0, 100]),
+        yaxis2=dict(title="Calificación", overlaying='y', side='right', range=[6, 10]),
         height=400,
         hovermode='x unified'
     )
     
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig_sim, use_container_width=True)
     
-    # Encontrar horas óptimas
-    optimal_idx = np.argmax(grades_scenarios)
-    optimal_hours = hours_scenarios[optimal_idx]
-    max_grade = grades_scenarios[optimal_idx]
+    # Encontrar punto óptimo
+    max_prob_idx = np.argmax(probs_sim)
+    optimal_hours = hours_sim[max_prob_idx]
+    max_prob = probs_sim[max_prob_idx]
     
-    st.info(f"💡 **Punto óptimo:** Con **{optimal_hours} horas** semanales podrías alcanzar **{max_grade:.2f}**")
+    if optimal_hours != hours_now:
+        st.info(f"💡 **Recomendación:** Con **{optimal_hours} horas** semanales podrías alcanzar **{max_prob:.1f}%** de probabilidad")
 
-# ===============================
-# 16. IMPORTANCIA DE VARIABLES (CORREGIDO)
-# ===============================
+# ------------------------------
+# IMPORTANCIA DE VARIABLES
+# ------------------------------
 st.markdown("---")
-st.subheader("📈 ¿Qué Afecta Más a tu Calificación?")
-
-st.markdown("**Análisis basado en Regresión Logística:**\nEstos factores influyen en tu probabilidad de alcanzar alto rendimiento (≥9.2)")
+st.subheader("📈 Factores Más Importantes")
 
 feature_names_readable = {
-    "Materias pasadas": "Materias semestre anterior",
+    "Materias pasadas ": "Materias anteriores",
     "Materias nuevas": "Materias actuales",
-    "Horas de estudio actuales": "Horas de estudio actuales",
-    "Horas estudio pasadas": "Horas semestre anterior",
-    "Calificaciones pasadas": "Calificación anterior",
-    "eficiencia_estudio_pasado": "Eficiencia de estudio",
-    "intensidad_estudio_actual": "Intensidad (horas/materia)",
+    "Horas de estudio actuales ": "Horas actuales",
+    "Horas estudio pasadas ": "Horas anteriores",
+    "Calificaciones pasadas": "Calificación pasada",
+    "eficiencia_estudio_pasado": "Eficiencia",
+    "intensidad_estudio_actual": "Intensidad",
     "cambio_horas": "Cambio en horas",
-    "ratio_materias": "Cambio en materias",
-    "tendencia_academica": "Tendencia académica",
-    "calificacion_cuadrada": "Calificación al cuadrado",
-    "horas_totales": "Total de horas",
-    "momentum_estudio": "Momentum académico"
+    "ratio_materias": "Ratio materias",
+    "tendencia_academica": "Tendencia",
+    "potencial_mejora": "Potencial mejora",
+    "carga_academica": "Carga académica",
+    "historial_fuerte": "Historial fuerte"
 }
 
-# ✅ SOLUCIÓN: Usar los coeficientes guardados del modelo base
-coef_importance = np.abs(base_coef)
+# Feature importance del Gradient Boosting
+importance = model_classification.feature_importances_
 
-# Normalizar por desviación estándar de cada feature
-feature_std = X_scaled_class.std(axis=0)
-coef_normalized = coef_importance / (feature_std + 1e-8)
+importance_df = pd.DataFrame({
+    "Factor": [feature_names_readable[c] for c in feature_cols],
+    "Importancia": importance
+}).sort_values("Importancia", ascending=False)
 
-# Aplicar escala logarítmica
-coef_log = np.log1p(coef_normalized)
-
-feature_importance = pd.DataFrame({
-    'Factor': [feature_names_readable[col] for col in feature_cols],
-    'Importancia': coef_log
-}).sort_values('Importancia', ascending=False)
-
-# Normalizar a porcentaje
-feature_importance['Porcentaje'] = (feature_importance['Importancia'] / feature_importance['Importancia'].sum() * 100)
+importance_df["Porcentaje"] = (importance_df["Importancia"] / importance_df["Importancia"].sum() * 100)
 
 fig3 = go.Figure(go.Bar(
-    x=feature_importance['Porcentaje'],
-    y=feature_importance['Factor'],
-    orientation='h',
+    x=importance_df["Porcentaje"],
+    y=importance_df["Factor"],
+    orientation="h",
     marker=dict(
-        color=feature_importance['Porcentaje'],
-        colorscale='Greens',
+        color=importance_df["Porcentaje"],
+        colorscale='Viridis',
         showscale=False
     ),
-    text=feature_importance['Porcentaje'].round(1).astype(str) + '%',
-    textposition='auto',
+    text=importance_df["Porcentaje"].round(1).astype(str) + '%',
+    textposition='auto'
 ))
 fig3.update_layout(
-    title="Importancia relativa - Regresión Logística (Probabilidad de Alto Rendimiento)",
+    title="Importancia de Factores (Gradient Boosting)",
     xaxis_title="Importancia (%)",
-    height=400,
+    height=500,
     showlegend=False
 )
-
 st.plotly_chart(fig3, use_container_width=True)
 
-st.caption("💡 Los factores más arriba son los que más influyen en tu probabilidad de alcanzar ≥9.2")
+st.caption("💡 Los factores de arriba son los que más influyen en tu potencial de alto rendimiento")
 
-# ===============================
-# 17. ESTADÍSTICAS DEL DATASET
-# ===============================
+# Estadísticas del dataset
 with st.expander("📊 Ver estadísticas del dataset"):
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -582,6 +470,6 @@ with st.expander("📊 Ver estadísticas del dataset"):
     with col2:
         st.metric("Calificación promedio", f"{df['Calificaciones pasadas'].mean():.2f}")
     with col3:
-        st.metric("Alto rendimiento", f"{(Y_class.sum()/len(Y_class)*100):.1f}%")
+        st.metric("Con potencial alto", f"{(Y_class.sum()/len(Y_class)*100):.1f}%")
     with col4:
-        st.metric("Horas promedio", f"{df['Horas de estudio actuales'].mean():.1f}")
+        st.metric("Horas promedio", f"{df['Horas de estudio actuales '].mean():.1f}")
