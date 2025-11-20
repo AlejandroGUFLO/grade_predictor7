@@ -5,10 +5,49 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 import plotly.graph_objects as go
+import json
+from datetime import datetime
 
 # ------------------------------
-# Load and prepare data
+# Sistema de persistencia de datos en archivo
 # ------------------------------
+import os
+import json
+
+DATA_FILE = "student_responses.json"
+
+def load_responses():
+    """Carga las respuestas guardadas en archivo"""
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_user_response(courses_past, courses_now, hours_past, hours_now, grade_past):
+    """Guarda los datos del usuario de forma persistente"""
+    responses = load_responses()
+    
+    response = {
+        "timestamp": datetime.now().isoformat(),
+        "Materias pasadas ": courses_past,
+        "Materias nuevas": courses_now,
+        "Horas estudio pasadas ": hours_past,
+        "Horas de estudio actuales ": hours_now,
+        "Calificaciones pasadas": grade_past
+    }
+    responses.append(response)
+    
+    # Guardar en archivo
+    with open(DATA_FILE, 'w') as f:
+        json.dump(responses, f, indent=2)
+
+# Cargar respuestas al iniciar
+all_responses = load_responses()
+
+# Load and prepare data
 @st.cache_data
 def load_and_prepare_data():
     df = pd.read_excel("proyectom.xlsx")
@@ -20,7 +59,6 @@ def load_and_prepare_data():
     df["ratio_materias"] = df["Materias nuevas"] / (df["Materias pasadas "] + 1)
     df["tendencia_academica"] = df["Calificaciones pasadas"] * (df["Horas de estudio actuales "] / (df["Horas estudio pasadas "] + 1))
     
-    # ✅ NUEVAS FEATURES PREDICTIVAS
     df["potencial_mejora"] = (df["Horas de estudio actuales "] - df["Horas estudio pasadas "]) * df["Calificaciones pasadas"] / 10
     df["carga_academica"] = df["Materias nuevas"] * (df["Horas de estudio actuales "] + 1)
     df["historial_fuerte"] = (df["Calificaciones pasadas"] >= 9.0).astype(int)
@@ -48,9 +86,7 @@ feature_cols = [
 
 X = df[feature_cols]
 
-# --------------------------------------------------------
-# MODELO 1: REGRESIÓN (CALIFICACIÓN EXACTA)
-# --------------------------------------------------------
+# MODELO 1: REGRESIÓN
 Y_grade = df["Calificaciones pasadas"]
 scaler_reg = StandardScaler()
 X_scaled_reg = scaler_reg.fit_transform(X)
@@ -59,18 +95,10 @@ model_regression = RandomForestRegressor(
 )
 model_regression.fit(X_scaled_reg, Y_grade)
 
-# --------------------------------------------------------
-# MODELO 2: CLASIFICACIÓN MEJORADA con lógica predictiva
-# --------------------------------------------------------
-# ✅ Crear objetivo basado en COMBINACIÓN de factores favorables
+# MODELO 2: CLASIFICACIÓN
 def create_high_performance_target(row):
-    """
-    Determina si un estudiante tiene potencial de alto rendimiento
-    basado en múltiples factores predictivos
-    """
     score = 0
     
-    # Factor 1: Calificación histórica fuerte
     if row["Calificaciones pasadas"] >= 9.2:
         score += 3
     elif row["Calificaciones pasadas"] >= 8.8:
@@ -78,40 +106,31 @@ def create_high_performance_target(row):
     elif row["Calificaciones pasadas"] >= 8.5:
         score += 1
     
-    # Factor 2: Incremento en horas de estudio
     if row["cambio_horas"] > 2:
         score += 2
     elif row["cambio_horas"] > 0:
         score += 1
     
-    # Factor 3: Buena eficiencia de estudio
     if row["eficiencia_estudio_pasado"] > 1.5:
         score += 2
     elif row["eficiencia_estudio_pasado"] > 1.2:
         score += 1
     
-    # Factor 4: Carga académica manejable
     if row["Materias nuevas"] <= row["Materias pasadas "]:
         score += 1
     
-    # Factor 5: Intensidad adecuada
     if row["intensidad_estudio_actual"] >= 1.0:
         score += 1
     
-    # ✅ Si tiene 5+ puntos, tiene alto potencial
     return 1 if score >= 5 else 0
 
-# Aplicar la función para crear el target
 Y_class = df.apply(create_high_performance_target, axis=1)
 
-# Verificar distribución
 positive_rate = Y_class.sum() / len(Y_class)
-st.sidebar.info(f"📊 Distribución de datos:\n- Alto potencial: {positive_rate*100:.1f}%\n- Casos positivos: {Y_class.sum()}/{len(Y_class)}")
 
 scaler_class = StandardScaler()
 X_scaled_class = scaler_class.fit_transform(X)
 
-# ✅ Usar Gradient Boosting que maneja mejor datos desbalanceados
 model_classification = GradientBoostingClassifier(
     n_estimators=100,
     learning_rate=0.1,
@@ -122,7 +141,6 @@ model_classification = GradientBoostingClassifier(
 )
 model_classification.fit(X_scaled_class, Y_class)
 
-# También entrenar Logistic Regression para comparación
 model_logistic = LogisticRegression(
     C=0.5,
     max_iter=1000,
@@ -132,9 +150,7 @@ model_logistic = LogisticRegression(
 )
 model_logistic.fit(X_scaled_class, Y_class)
 
-# ------------------------------
 # UI
-# ------------------------------
 st.title("🎓 Predictor de Calificaciones")
 st.markdown("Predice tu calificación esperada y probabilidad de alto rendimiento")
 
@@ -164,9 +180,7 @@ with col2:
     courses_now = st.number_input("Materias cursando", min_value=1, max_value=15, value=8, key="cn")
     hours_now = st.number_input("Horas de estudio semanales", min_value=1, max_value=30, value=5, key="hn")
 
-# ------------------------------
 # Cálculo de features derivadas
-# ------------------------------
 eficiencia = grade_past / (hours_past + 1)
 intensidad = hours_now / (courses_now + 1)
 cambio_h = hours_now - hours_past
@@ -176,10 +190,11 @@ potencial_mejora = (hours_now - hours_past) * grade_past / 10
 carga_academica = courses_now * (hours_now + 1)
 historial_fuerte = 1 if grade_past >= 9.0 else 0
 
-# ------------------------------
 # Prediction
-# ------------------------------
 if st.button("🔮 Predecir Rendimiento", type="primary"):
+    # Guardar respuesta del usuario
+    save_user_response(courses_past, courses_now, hours_past, hours_now, grade_past)
+    
     new_data = pd.DataFrame({
         "Materias pasadas ": [courses_past],
         "Materias nuevas": [courses_now],
@@ -196,17 +211,17 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         "historial_fuerte": [historial_fuerte]
     })
     
-    # --- Predicción de REGRESIÓN ---
+    # Predicción de REGRESIÓN
     new_data_scaled_reg = scaler_reg.transform(new_data)
     predicted_grade = model_regression.predict(new_data_scaled_reg)[0]
     predicted_grade = np.clip(predicted_grade, 6.0, 10.0)
     
-    # --- Predicción CLASIFICACIÓN (Gradient Boosting) ---
+    # Predicción CLASIFICACIÓN
     new_data_scaled_class = scaler_class.transform(new_data)
     prediction_class = model_classification.predict(new_data_scaled_class)[0]
     probability = model_classification.predict_proba(new_data_scaled_class)[0][1]
     
-    # --- Predicción LOGÍSTICA (para comparar) ---
+    # Predicción LOGÍSTICA
     prediction_logistic = model_logistic.predict(new_data_scaled_class)[0]
     probability_logistic = model_logistic.predict_proba(new_data_scaled_class)[0][1]
     
@@ -373,32 +388,27 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     - Celebra pequeños logros y avances
     """)
 
-# Estadísticas del dataset - se actualiza con datos del usuario
+# Estadísticas del dataset - se actualiza con datos acumulados
 st.markdown("---")
-st.subheader("📊 Estadísticas Descriptivas del Dataset + Tu Predicción")
+st.subheader("📊 Estadísticas Descriptivas (Dataset + Respuestas Acumuladas)")
 
-# Crear una copia del dataframe y agregar los datos del usuario actual
-df_updated = df.copy()
+# Crear dataframe con datos acumulados
+df_accumulated = df.copy()
 
-# Crear una fila con los datos del usuario actual
-user_row = pd.DataFrame({
-    "Materias pasadas ": [courses_past],
-    "Materias nuevas": [courses_now],
-    "Horas estudio pasadas ": [hours_past],
-    "Horas de estudio actuales ": [hours_now],
-    "Calificaciones pasadas": [grade_past],
-    "eficiencia_estudio_pasado": [eficiencia],
-    "intensidad_estudio_actual": [intensidad],
-    "cambio_horas": [cambio_h],
-    "ratio_materias": [ratio_mat],
-    "tendencia_academica": [tendencia],
-    "potencial_mejora": [potencial_mejora],
-    "carga_academica": [carga_academica],
-    "historial_fuerte": [historial_fuerte]
-})
+# Recargar respuestas del archivo
+all_responses = load_responses()
 
-# Concatenar el dataframe original con los datos del usuario
-df_updated = pd.concat([df_updated, user_row], ignore_index=True)
+if len(all_responses) > 0:
+    responses_df = pd.DataFrame(all_responses)
+    # Solo tomar las columnas necesarias
+    responses_df = responses_df[[
+        "Materias pasadas ",
+        "Materias nuevas",
+        "Horas estudio pasadas ",
+        "Horas de estudio actuales ",
+        "Calificaciones pasadas"
+    ]]
+    df_accumulated = pd.concat([df_accumulated, responses_df], ignore_index=True)
 
 variables_to_analyze = {
     "Materias pasadas ": "Materias Semestre Pasado",
@@ -411,7 +421,7 @@ variables_to_analyze = {
 stats_data = []
 
 for col, label in variables_to_analyze.items():
-    data = df_updated[col]
+    data = df_accumulated[col]
     stats_data.append({
         "Variable": label,
         "N": len(data),
@@ -426,4 +436,12 @@ for col, label in variables_to_analyze.items():
 
 stats_df = pd.DataFrame(stats_data)
 st.dataframe(stats_df, use_container_width=True)
-st.caption("✨ Las estadísticas se actualizan con tus datos cada vez que cambias los valores")
+
+# Mostrar información de respuestas acumuladas
+col_info1, col_info2 = st.columns(2)
+with col_info1:
+    st.metric("Estudiantes en dataset", len(df))
+with col_info2:
+    st.metric("Respuestas acumuladas", len(all_responses))
+
+st.caption("✨ Las estadísticas se actualizan automáticamente con cada nueva respuesta")
