@@ -79,11 +79,12 @@ scaler_class = StandardScaler()
 X_scaled_class = scaler_class.fit_transform(X)
 
 model_classification = LogisticRegression(
-    C=0.5, 
-    max_iter=1000, 
+    C=0.1,  # ← REDUCIDO (más regularización = menos sobreajuste)
+    max_iter=1000,
     solver="lbfgs",
     random_state=42,
-    class_weight='balanced'
+    class_weight='balanced',
+    penalty='l2'  # ← AGREGADO (regularización L2)
 )
 model_classification.fit(X_scaled_class, Y_class)
 
@@ -233,32 +234,32 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     col_gauge1, col_gauge2 = st.columns(2)
     
     with col_gauge1:
-        # Gráfico tipo velocímetro para calificación
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number+delta",
-            value=predicted_grade,
-            domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "Calificación Esperada", 'font': {'size': 20}},
-            delta={'reference': grade_past, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
-            number={'font': {'size': 40}},
-            gauge={
-                'axis': {'range': [6, 10], 'tickwidth': 2, 'tickcolor': "darkblue"},
-                'bar': {'color': "darkblue", 'thickness': 0.75},
-                'steps': [
-                    {'range': [6, 7], 'color': "#ffcccc"},
-                    {'range': [7, 8], 'color': "#fff4cc"},
-                    {'range': [8, 9], 'color': "#cce5ff"},
-                    {'range': [9, 10], 'color': "#ccffcc"}
-                ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.85,
-                    'value': 9.2
-                }
+    # Gráfico tipo velocímetro para calificación
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=predicted_grade,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': "Calificación Esperada", 'font': {'size': 20}},
+        delta={'reference': grade_past, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+        number={'font': {'size': 50, 'color': 'darkblue'}},  # ✅ AUMENTADO y con color
+        gauge={
+            'axis': {'range': [6, 10], 'tickwidth': 2, 'tickcolor': "darkblue"},
+            'bar': {'color': "darkblue", 'thickness': 0.75},
+            'steps': [
+                {'range': [6, 7], 'color': "#ffcccc"},
+                {'range': [7, 8], 'color': "#fff4cc"},
+                {'range': [8, 9], 'color': "#cce5ff"},
+                {'range': [9, 10], 'color': "#ccffcc"}
+            ],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.85,
+                'value': 9.2
             }
-        ))
-        fig.update_layout(height=350)
-        st.plotly_chart(fig, use_container_width=True)
+        }
+    ))
+    fig.update_layout(height=350, margin=dict(l=10, r=10, t=50, b=10))
+    st.plotly_chart(fig, use_container_width=True)
     
     with col_gauge2:
         # Gráfico de barras para probabilidades (Regresión Logística)
@@ -462,9 +463,9 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     # ===============================
     st.markdown("---")
     st.subheader("📈 ¿Qué Afecta Más a tu Calificación?")
-    
+
     st.markdown("**Análisis basado en Regresión Logística:**\nEstos factores influyen en tu probabilidad de alcanzar alto rendimiento (≥9.2)")
-    
+
     feature_names_readable = {
         "Materias pasadas": "Materias semestre anterior",
         "Materias nuevas": "Materias actuales",
@@ -477,20 +478,25 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         "ratio_materias": "Cambio en materias",
         "tendencia_academica": "Tendencia académica"
     }
-    
-    # Obtener coeficientes normalizados del modelo
+
+    # Obtener coeficientes en valor absoluto
     coef_importance = np.abs(model_classification.coef_[0])
+
+    # ✅ MEJORA: Normalizar por desviación estándar de cada feature
     feature_std = X_scaled_class.std(axis=0)
     coef_normalized = coef_importance / (feature_std + 1e-8)
-    
+
+    # ✅ MEJORA: Aplicar escala logarítmica para reducir el dominio de un factor
+    coef_log = np.log1p(coef_normalized)
+
     feature_importance = pd.DataFrame({
         'Factor': [feature_names_readable[col] for col in feature_cols],
-        'Importancia': coef_normalized
+        'Importancia': coef_log
     }).sort_values('Importancia', ascending=False)
-    
+
     # Normalizar a porcentaje
     feature_importance['Porcentaje'] = (feature_importance['Importancia'] / feature_importance['Importancia'].sum() * 100)
-    
+
     fig3 = go.Figure(go.Bar(
         x=feature_importance['Porcentaje'],
         y=feature_importance['Factor'],
@@ -509,9 +515,9 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         height=400,
         showlegend=False
     )
-    
+
     st.plotly_chart(fig3, use_container_width=True)
-    
+
     st.caption("💡 Los factores más arriba son los que más influyen en tu probabilidad de alcanzar ≥9.2")
 
 # ===============================
