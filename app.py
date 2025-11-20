@@ -1,28 +1,17 @@
-# Tabla de probabilidades detallada (solo Alto Rendimiento)
-    prob_bajo = 1 - probability
-    analysis_data = {
-        "Categoría": ["✅ Alto Rendimiento (≥9.2)", "⚠️ No Alcanza Alto Rendimiento (<9.2)"],
-        "Probabilidad": [f"{probability*100:.1f}%", f"{prob_bajo*100:.1f}%"],
-        "Interpretación": [
-            "Posibilidad de alcanzar la meta" if probability >= 0.5 else "Difícil pero posible",
-            "Probabilidad complementaria" if prob_bajo >= 0.5 else "Muy probable éxito"
-        ]
-    }
-    
-    df_analysis = pd.DataFrame(analysis_data)
-    st.dataframe(df_analysis, use_container_width=True, hide_index=True)import streamlit as st
 import pandas as pd
 import numpy as np
+import streamlit as st
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LogisticRegression
 import plotly.graph_objects as go
 
-# ------------------------------
-# Load and prepare data
-# ------------------------------
+# ===============================
+# 1. CARGAR Y PREPARAR DATOS
+# ===============================
 @st.cache_data
 def load_and_prepare_data():
+    """Carga el archivo Excel y realiza ingeniería de características"""
     df = pd.read_excel("proyectom.xlsx")
     
     # Limpiar nombres de columnas (remover espacios extra)
@@ -33,10 +22,10 @@ def load_and_prepare_data():
                      "Materias pasadas", "Materias nuevas"]
     df = df.dropna(subset=critical_cols)
     
-    # Target variables
+    # Variable objetivo: Alto rendimiento (≥9.2)
     df["HighPerformance"] = (df["Calificaciones pasadas"] >= 9.2).astype(int)
     
-    # Feature engineering - variables normalizadas
+    # Ingeniería de características
     df["eficiencia_estudio_pasado"] = df["Calificaciones pasadas"] / (df["Horas estudio pasadas"] + 1)
     df["intensidad_estudio_actual"] = df["Horas de estudio actuales"] / (df["Materias nuevas"] + 1)
     df["cambio_horas"] = df["Horas de estudio actuales"] - df["Horas estudio pasadas"]
@@ -45,9 +34,12 @@ def load_and_prepare_data():
     
     return df
 
+# Cargar datos
 df = load_and_prepare_data()
 
-# Features mejoradas y balanceadas
+# ===============================
+# 2. DEFINIR FEATURES
+# ===============================
 feature_cols = [
     "Materias pasadas",
     "Materias nuevas",
@@ -63,10 +55,13 @@ feature_cols = [
 
 X = df[feature_cols].copy()
 
-# Modelo de REGRESIÓN para predecir la calificación exacta
+# ===============================
+# 3. ENTRENAR MODELO DE REGRESIÓN
+# ===============================
 Y_grade = df["Calificaciones pasadas"]
 scaler_reg = StandardScaler()
 X_scaled_reg = scaler_reg.fit_transform(X)
+
 model_regression = RandomForestRegressor(
     n_estimators=200, 
     random_state=42, 
@@ -76,7 +71,9 @@ model_regression = RandomForestRegressor(
 )
 model_regression.fit(X_scaled_reg, Y_grade)
 
-# Modelo de CLASIFICACIÓN LOGÍSTICA para probabilidad de alto rendimiento (≥9.2)
+# ===============================
+# 4. ENTRENAR MODELO DE REGRESIÓN LOGÍSTICA
+# ===============================
 Y_class = df["HighPerformance"]
 scaler_class = StandardScaler()
 X_scaled_class = scaler_class.fit_transform(X)
@@ -86,22 +83,26 @@ model_classification = LogisticRegression(
     max_iter=1000, 
     solver="lbfgs",
     random_state=42,
-    class_weight='balanced'  # Para manejar desbalance de clases
+    class_weight='balanced'
 )
 model_classification.fit(X_scaled_class, Y_class)
 
-# Función para validar predicciones
+# ===============================
+# 5. FUNCIÓN DE VALIDACIÓN
+# ===============================
 def validate_prediction(predicted_grade):
-    """Asegurar que la predicción esté en rango válido"""
+    """Asegurar que la predicción esté en rango válido (6-10)"""
     return np.clip(predicted_grade, 6.0, 10.0)
 
-# ------------------------------
-# UI Interfaz streamlit
-# ------------------------------
+# ===============================
+# 6. INTERFAZ STREAMLIT
+# ===============================
 st.title("🎓 Predictor de Calificaciones")
 st.markdown("*Predice tu calificación esperada y probabilidad de alto rendimiento*")
 
-# Información personal del estudiante
+# ===============================
+# 7. SECCIÓN: INFORMACIÓN PERSONAL
+# ===============================
 st.markdown("---")
 st.subheader("👤 Información Personal")
 
@@ -113,6 +114,9 @@ with col_info1:
 with col_info2:
     semester = st.selectbox("Semestre actual", list(range(1, 10)), format_func=lambda x: f"{x}° semestre", key="semester")
 
+# ===============================
+# 8. SECCIÓN: DATOS DE ENTRADA
+# ===============================
 st.markdown("---")
 
 col1, col2 = st.columns(2)
@@ -128,19 +132,20 @@ with col2:
     courses_now = st.number_input("Materias cursando", min_value=1, max_value=15, value=8, key="cn")
     hours_now = st.number_input("Horas de estudio semanales", min_value=1, max_value=30, value=5, key="hn")
 
-# ------------------------------
-# Cálculo de features derivadas
-# ------------------------------
+# ===============================
+# 9. CALCULAR FEATURES DERIVADAS
+# ===============================
 eficiencia = grade_past / (hours_past + 1)
 intensidad = hours_now / (courses_now + 1)
 cambio_h = hours_now - hours_past
 ratio_mat = courses_now / (courses_past + 1)
 tendencia = grade_past * (hours_now / (hours_past + 1))
 
-# ------------------------------
-# Prediction
-# ------------------------------
+# ===============================
+# 10. REALIZAR PREDICCIÓN
+# ===============================
 if st.button("🔮 Predecir Rendimiento", type="primary"):
+    # Crear DataFrame con nuevos datos
     new_data = pd.DataFrame({
         "Materias pasadas": [courses_past],
         "Materias nuevas": [courses_now],
@@ -154,17 +159,19 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         "tendencia_academica": [tendencia]
     })
     
-    # Predicción de calificación
+    # Predicción de calificación (Regresión)
     new_data_scaled_reg = scaler_reg.transform(new_data)
     predicted_grade = model_regression.predict(new_data_scaled_reg)[0]
     predicted_grade = validate_prediction(predicted_grade)
     
-    # Predicción de clasificación (>9.2) - REGRESIÓN LOGÍSTICA
+    # Predicción de clasificación (Regresión Logística)
     new_data_scaled_class = scaler_class.transform(new_data)
     prediction_class = model_classification.predict(new_data_scaled_class)[0]
     probability = model_classification.predict_proba(new_data_scaled_class)[0][1]
     
-    # Resultados principales
+    # ===============================
+    # 11. MOSTRAR RESULTADOS
+    # ===============================
     st.markdown("---")
     st.subheader("📊 Resultados de la Predicción")
     
@@ -220,7 +227,9 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
             help="Diferencia vs semestre anterior"
         )
     
-    # Gráficos combinados: velocímetro de calificación + probabilidades
+    # ===============================
+    # 12. GRÁFICOS PRINCIPALES
+    # ===============================
     col_gauge1, col_gauge2 = st.columns(2)
     
     with col_gauge1:
@@ -253,9 +262,9 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     
     with col_gauge2:
         # Gráfico de barras para probabilidades (Regresión Logística)
-        prob_bajo = 1 - probability
+        prob_bajo_graph = 1 - probability
         categories = ["✅ Alto\nRendimiento\n(≥9.2)", "⚠️ No Alcanza\nAlto\nRendimiento"]
-        probs = [probability * 100, prob_bajo * 100]
+        probs = [probability * 100, prob_bajo_graph * 100]
         colors_probs = ["#2ecc71", "#e74c3c"]
         
         fig_prob = go.Figure(data=[
@@ -265,7 +274,7 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
                 marker=dict(color=colors_probs),
                 text=[f"{p:.1f}%" for p in probs],
                 textposition='auto',
-                textfont=dict(size=16, color='white', weight='bold'),
+                textfont=dict(size=16, color='white'),
                 hovertemplate="<b>%{x}</b><br>Probabilidad: %{y:.1f}%<extra></extra>"
             )
         ])
@@ -282,26 +291,29 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         
         st.plotly_chart(fig_prob, use_container_width=True)
     
-    # Análisis de cambio
+    # ===============================
+    # 13. ANÁLISIS DETALLADO
+    # ===============================
     grade_change = predicted_grade - grade_past
     
-    st.markdown("### 📊 Análisis Detallado")
+    st.markdown("---")
+    st.subheader("📊 Análisis Detallado")
     
-    # Tabla de probabilidades detallada
-    prob_bajo = 1 - probability
+    # Tabla de probabilidades
+    prob_bajo_table = 1 - probability
     analysis_data = {
-        "Escenario": ["Alto Rendimiento (≥9.2)", "Bajo Rendimiento (<9.2)"],
-        "Probabilidad": [f"{probability*100:.1f}%", f"{prob_bajo*100:.1f}%"],
-        "Confianza": [
-            "🟢 Alta" if probability >= 0.7 else "🟡 Media" if probability >= 0.5 else "🔴 Baja",
-            "🟢 Alta" if prob_bajo >= 0.7 else "🟡 Media" if prob_bajo >= 0.5 else "🔴 Baja"
+        "Categoría": ["✅ Alto Rendimiento (≥9.2)", "⚠️ No Alcanza Alto Rendimiento (<9.2)"],
+        "Probabilidad": [f"{probability*100:.1f}%", f"{prob_bajo_table*100:.1f}%"],
+        "Interpretación": [
+            "Posibilidad de alcanzar la meta" if probability >= 0.5 else "Difícil pero posible",
+            "Probabilidad complementaria" if prob_bajo_table >= 0.5 else "Muy probable éxito"
         ]
     }
     
     df_analysis = pd.DataFrame(analysis_data)
-    st.table(df_analysis)
+    st.dataframe(df_analysis, use_container_width=True, hide_index=True)
     
-    # Interpretación
+    # Interpretación general
     st.markdown("**Interpretación:**")
     if probability >= 0.7:
         st.success(f"✅ Tienes una **alta probabilidad ({probability*100:.1f}%)** de alcanzar alto rendimiento (≥9.2)")
@@ -317,7 +329,9 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     else:
         st.info(f"📊 **Estable:** Calificación similar al semestre anterior ({grade_change:+.2f})")
     
-    # Recomendaciones
+    # ===============================
+    # 14. RECOMENDACIONES
+    # ===============================
     st.markdown("---")
     st.subheader("💡 Recomendaciones Personalizadas")
     
@@ -355,10 +369,12 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     else:
         st.info("**✅ Buen camino - Estás cerca del alto rendimiento**")
         st.write(f"• 🎯 Solo necesitas **{9.2 - predicted_grade:.2f} puntos** más para llegar a 9.2")
-        st.write(f"• ⏰ Aumentar 2-3 horas de estudio semanales podría ser suficiente")
+        st.write("• ⏰ Aumentar 2-3 horas de estudio semanales podría ser suficiente")
         st.write("• 📖 Enfócate en técnicas de estudio más efectivas")
     
-    # Simulador
+    # ===============================
+    # 15. SIMULADOR
+    # ===============================
     st.markdown("---")
     st.subheader("🔄 Simulador: Impacto de las Horas de Estudio")
     
@@ -398,7 +414,7 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     
     fig2 = go.Figure()
     
-    # Calificación esperada
+    # Línea de calificación esperada
     fig2.add_trace(go.Scatter(
         x=hours_scenarios,
         y=grades_scenarios,
@@ -409,7 +425,7 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         yaxis='y1'
     ))
     
-    # Marcar el punto actual
+    # Marcar punto actual
     fig2.add_trace(go.Scatter(
         x=[hours_now],
         y=[predicted_grade],
@@ -419,7 +435,7 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         yaxis='y1'
     ))
     
-    # Línea de referencia en 9.2
+    # Línea de referencia 9.2
     fig2.add_hline(y=9.2, line_dash="dash", line_color="green", 
                    annotation_text="Alto rendimiento (9.2)", yref='y1')
     
@@ -441,7 +457,9 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     
     st.info(f"💡 **Punto óptimo:** Con **{optimal_hours} horas** semanales podrías alcanzar **{max_grade:.2f}**")
     
-    # Importancia de variables - CORREGIDO PARA REGRESIÓN LOGÍSTICA
+    # ===============================
+    # 16. IMPORTANCIA DE VARIABLES
+    # ===============================
     st.markdown("---")
     st.subheader("📈 ¿Qué Afecta Más a tu Calificación?")
     
@@ -460,11 +478,8 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         "tendencia_academica": "Tendencia académica"
     }
     
-    # Usar coeficientes del modelo de Regresión Logística (valor absoluto)
+    # Obtener coeficientes normalizados del modelo
     coef_importance = np.abs(model_classification.coef_[0])
-    
-    # Normalizar por la desviación estándar de cada feature (ya que los datos están escalados)
-    # Esto da un peso más justo a cada característica
     feature_std = X_scaled_class.std(axis=0)
     coef_normalized = coef_importance / (feature_std + 1e-8)
     
@@ -473,7 +488,7 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
         'Importancia': coef_normalized
     }).sort_values('Importancia', ascending=False)
     
-    # Normalizar importancias a porcentaje
+    # Normalizar a porcentaje
     feature_importance['Porcentaje'] = (feature_importance['Importancia'] / feature_importance['Importancia'].sum() * 100)
     
     fig3 = go.Figure(go.Bar(
@@ -499,7 +514,9 @@ if st.button("🔮 Predecir Rendimiento", type="primary"):
     
     st.caption("💡 Los factores más arriba son los que más influyen en tu probabilidad de alcanzar ≥9.2")
 
-# Estadísticas del dataset
+# ===============================
+# 17. ESTADÍSTICAS DEL DATASET
+# ===============================
 with st.expander("📊 Ver estadísticas del dataset"):
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -510,4 +527,3 @@ with st.expander("📊 Ver estadísticas del dataset"):
         st.metric("Alto rendimiento", f"{(Y_class.sum()/len(Y_class)*100):.1f}%")
     with col4:
         st.metric("Horas promedio", f"{df['Horas de estudio actuales'].mean():.1f}")
-
